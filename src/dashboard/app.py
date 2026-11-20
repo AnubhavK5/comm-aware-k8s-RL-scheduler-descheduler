@@ -319,7 +319,7 @@ class ClusterSimulator:
         }
 
     def execute_deschedule_step(self) -> Dict[str, Any]:
-        """Executes 1 PPO descheduling decision step."""
+        """Executes 1 greedy heuristic descheduling decision step."""
         with self.lock:
             eval_result = self.evaluate_descheduling_candidates()
             victim = eval_result["best_victim"]

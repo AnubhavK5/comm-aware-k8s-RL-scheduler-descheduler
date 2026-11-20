@@ -152,7 +152,7 @@
                 <!-- Status Pill -->
                 <div id="status-pill" class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-semibold">
                     <span id="status-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span id="status-text">PPO Active · Simulation</span>
+                    <span id="status-text">Heuristic Active · Simulation</span>
                 </div>
 
                 <!-- Drift Injection Dropdown -->
@@ -317,7 +317,7 @@
                         <!-- Single Deschedule Step -->
                         <button onclick="triggerDescheduleStep()" class="w-full py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-2">
                             <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i>
-                            <span>Execute 1 PPO Deschedule Step</span>
+                            <span>Execute 1 Greedy Deschedule Step</span>
                         </button>
 
                         <!-- Auto Deschedule Toggle -->
@@ -433,7 +433,7 @@
                                     <i data-lucide="shield" class="w-4 h-4"></i>
                                 </div>
                                 <div>
-                                    <h4 class="text-xs font-bold text-slate-800">PPO Evictions</h4>
+                                    <h4 class="text-xs font-bold text-slate-800">Descheduler Evictions</h4>
                                     <p class="text-[10px] text-slate-400">Reschedules Safe</p>
                                 </div>
                             </div>
@@ -694,12 +694,12 @@
             if (mode === 'live') {
                 if (simBtn) simBtn.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-slate-500 hover:text-slate-800 transition";
                 if (liveBtn) liveBtn.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white text-emerald-700 shadow-xs transition";
-                if (statusText) statusText.innerText = "PPO Active · Live K8s Cluster";
+                if (statusText) statusText.innerText = "Heuristic Active · Live K8s Cluster";
                 if (statusDot) statusDot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
             } else {
                 if (simBtn) simBtn.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white text-slate-800 shadow-xs transition";
                 if (liveBtn) liveBtn.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-slate-500 hover:text-slate-800 transition";
-                if (statusText) statusText.innerText = "PPO Active · Simulated Cluster";
+                if (statusText) statusText.innerText = "Heuristic Active · Simulated Cluster";
                 if (statusDot) statusDot.className = "w-2 h-2 rounded-full bg-indigo-500 animate-pulse";
             }
 

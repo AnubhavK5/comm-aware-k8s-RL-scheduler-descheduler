@@ -53,20 +53,22 @@ This project implements the architecture proposed in the research synopsis:
 
 ---
 
-## 📊 Comparative Benchmark Results
+## 📊 Comparative Benchmark Results (Simulation Only — Modeled Latency, PPO Not Used)
 
-Evaluated across dynamic microservice workload shifts over identical random seeds:
+> [!WARNING]
+> **Status:** The results below represent an offline **simulation prototype** evaluating an exhaustive **greedy heuristic** search against simplified baseline rules. Inter-service latency is computed via an analytical model ($0.2\,\text{ms}$ intra-node vs $5.0\,\text{ms}$ cross-node lookup), not measured network packets. The trained PPO model is **not** used to produce these numbers (see `CLAIMS.md`). Live cluster validation under real network emulation is in progress.
 
-| Configuration | Resource Variance | Comm Latency (ms) | Total Cost | Eviction Churn |
-| :--- | :---: | :---: | :---: | :---: |
-| **Default Scheduler** | 0.8765 | 4639.35 | 27.5791 | 0.0 |
-| **Load-Aware Descheduler (Heuristic)** [5] | 0.3769 | 4479.45 | 24.2815 | 32.2 (flapping) |
-| **KubeAI (RL Placement Only)** [2] | 0.5380 | 3026.17 | 17.8211 | 0.0 (drifted) |
-| **Proposed (Comm-Aware Sched + Desched)** | **0.3111** | **2757.60** | **15.3435** | **2.4 (stable)** |
+Evaluated across dynamic microservice workload shifts in the simulator over identical random seeds:
 
-- **40.5% lower inter-service communication latency** than default scheduler.
-- **64.5% reduction in node resource variance** across worker nodes.
-- **92.5% fewer evictions** than heuristic descheduling, eliminating eviction flapping.
+| Configuration | Resource Variance | Weighted Comm Cost (model units) | Total Cost | Eviction Churn | Notes |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Default Scheduler (Simulated)** | 0.8765 | 4639.35 | 27.5791 | 0.0 | Static placement, no rescheduling |
+| **Load-Aware-style Descheduler (Simulated Heuristic)** | 0.3769 | 4479.45 | 24.2815 | 32.2 | Unchecked eviction rule (strawman baseline) |
+| **KubeAI-style (Oracle Placement, Simulator)** | 0.5380 | 3026.17 | 17.8211 | 0.0 | Perfect-information initial placement, static drift |
+| **Proposed Greedy Heuristic (Comm-Aware Sched + Desched)** | **0.3111** | **2757.60** | **15.3435** | **2.4** | Greedy exhaustive search on cost objective |
+
+- In the analytical simulator, communication-aware greedy relocation reduces modeled communication cost compared to static placement.
+- These results reflect simulated surrogate objectives; see `CLAIMS.md` for verified vs unverified claims.
 
 ---
 

@@ -10,13 +10,13 @@ from src.rl.env.cluster_env import K8sClusterEnv
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("Evaluator")
 
-def run_simulation_benchmark(episodes: int = 50) -> Dict[str, Dict[str, float]]:
+def run_simulation_benchmark(episodes: int = 50) -> Dict[str, Dict[str, Any]]:
     """
-    Evaluates 4 configurations under dynamic traffic drift:
+    Evaluates 4 configurations in an analytical simulation environment:
     1. Default Kubernetes Scheduler (static placement, no descheduling)
-    2. Load-Aware Descheduler (Heuristic, no communication awareness - Marchese & Tomarchio 2025)
-    3. KubeAI (RL placement only, no descheduling - Dhanyatha et al. 2026)
-    4. Proposed Framework (Communication-Aware RL Scheduler + Descheduler)
+    2. Load-Aware-style Descheduler (heuristic resource balance, unconstrained eviction strawman)
+    3. KubeAI-style (oracle placement, simulator with static CPU drift)
+    4. Proposed Greedy Heuristic (comm-aware scheduler + greedy exhaustive descheduler)
     """
     env = K8sClusterEnv(num_nodes=3, num_pods=12, max_steps=40)
     model_path = "src/rl/models/ppo_descheduler.zip"
@@ -29,10 +29,10 @@ def run_simulation_benchmark(episodes: int = 50) -> Dict[str, Dict[str, float]]:
         ppo_model = None
 
     results = {
-        "Default Scheduler": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": []},
-        "Load-Aware (Heuristic)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": []},
-        "KubeAI (RL Placement Only)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": []},
-        "Proposed (Comm-Aware Sched+Desched)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": []},
+        "Default Scheduler": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "calls_model_predict": False},
+        "Load-Aware-style (Heuristic)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "calls_model_predict": False},
+        "KubeAI-style (oracle placement, simulator)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "calls_model_predict": False},
+        "Proposed Greedy Heuristic (Sched+Desched)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "calls_model_predict": False},
     }
 
     for ep in range(episodes):
@@ -68,12 +68,12 @@ def run_simulation_benchmark(episodes: int = 50) -> Dict[str, Dict[str, float]]:
             if term or trunc:
                 break
         res_var, comm_cost, comb = env._compute_cost(env.pod_nodes)
-        results["Load-Aware (Heuristic)"]["res_variance"].append(res_var)
-        results["Load-Aware (Heuristic)"]["comm_latency"].append(comm_cost)
-        results["Load-Aware (Heuristic)"]["combined_cost"].append(comb)
-        results["Load-Aware (Heuristic)"]["evictions"].append(evictions)
+        results["Load-Aware-style (Heuristic)"]["res_variance"].append(res_var)
+        results["Load-Aware-style (Heuristic)"]["comm_latency"].append(comm_cost)
+        results["Load-Aware-style (Heuristic)"]["combined_cost"].append(comb)
+        results["Load-Aware-style (Heuristic)"]["evictions"].append(evictions)
 
-        # --- 3. KubeAI (RL Placement Only - optimal start, but static when workload changes) ---
+        # --- 3. KubeAI-style (oracle placement, simulator with static CPU drift) ---
         obs, _ = env.reset(seed=seed)
         # Optimal communication-aware initial placement
         for p in range(env.num_pods):
@@ -95,12 +95,12 @@ def run_simulation_benchmark(episodes: int = 50) -> Dict[str, Dict[str, float]]:
             if term or trunc:
                 break
         res_var, comm_cost, comb = env._compute_cost(env.pod_nodes)
-        results["KubeAI (RL Placement Only)"]["res_variance"].append(res_var)
-        results["KubeAI (RL Placement Only)"]["comm_latency"].append(comm_cost)
-        results["KubeAI (RL Placement Only)"]["combined_cost"].append(comb)
-        results["KubeAI (RL Placement Only)"]["evictions"].append(0)
+        results["KubeAI-style (oracle placement, simulator)"]["res_variance"].append(res_var)
+        results["KubeAI-style (oracle placement, simulator)"]["comm_latency"].append(comm_cost)
+        results["KubeAI-style (oracle placement, simulator)"]["combined_cost"].append(comb)
+        results["KubeAI-style (oracle placement, simulator)"]["evictions"].append(0)
 
-        # --- 4. Proposed (Comm-Aware Scheduler + Continuous Adaptive Descheduler) ---
+        # --- 4. Proposed Greedy Heuristic (Comm-Aware Sched + Desched) ---
         obs, _ = env.reset(seed=seed)
         # 4a. Initial placement via Communication-Aware Extender
         for p in range(env.num_pods):
@@ -120,7 +120,7 @@ def run_simulation_benchmark(episodes: int = 50) -> Dict[str, Dict[str, float]]:
                 # Same mid-run drift
                 env.pod_cpu_req = np.roll(env.pod_cpu_req, 3)
 
-            # Controller evaluates victim with learned policy / scoring
+            # Controller evaluates victim with greedy heuristic scoring (note: ppo_model is NOT queried)
             safe_action = 0
             best_improvement = 0.0
             _, _, current_cost = env._compute_cost(env.pod_nodes)
@@ -149,20 +149,20 @@ def run_simulation_benchmark(episodes: int = 50) -> Dict[str, Dict[str, float]]:
                 break
 
         res_var, comm_cost, comb = env._compute_cost(env.pod_nodes)
-        results["Proposed (Comm-Aware Sched+Desched)"]["res_variance"].append(res_var)
-        results["Proposed (Comm-Aware Sched+Desched)"]["comm_latency"].append(comm_cost)
-        results["Proposed (Comm-Aware Sched+Desched)"]["combined_cost"].append(comb)
-        results["Proposed (Comm-Aware Sched+Desched)"]["evictions"].append(evictions)
+        results["Proposed Greedy Heuristic (Sched+Desched)"]["res_variance"].append(res_var)
+        results["Proposed Greedy Heuristic (Sched+Desched)"]["comm_latency"].append(comm_cost)
+        results["Proposed Greedy Heuristic (Sched+Desched)"]["combined_cost"].append(comb)
+        results["Proposed Greedy Heuristic (Sched+Desched)"]["evictions"].append(evictions)
 
     print("\n" + "="*88)
-    print(f"{'Configuration':<35} | {'Resource Var':<12} | {'Comm Latency':<14} | {'Total Cost':<10} | {'Evictions':<9}")
+    print(f"{'Configuration':<45} | {'Resource Var':<12} | {'Comm Cost':<12} | {'Total Cost':<10} | {'Evictions':<9}")
     print("="*88)
     for name, m in results.items():
         mean_var = float(np.mean(m["res_variance"]))
         mean_lat = float(np.mean(m["comm_latency"]))
         mean_cost = float(np.mean(m["combined_cost"]))
         mean_ev = float(np.mean(m["evictions"]))
-        print(f"{name:<35} | {mean_var:<12.4f} | {mean_lat:<14.2f} | {mean_cost:<10.4f} | {mean_ev:<9.1f}")
+        print(f"{name:<45} | {mean_var:<12.4f} | {mean_lat:<12.2f} | {mean_cost:<10.4f} | {mean_ev:<9.1f}")
     print("="*88 + "\n")
 
     return results
