@@ -56,3 +56,14 @@ def test_cpu_memory_parsers():
 
     assert K8sClient._parse_memory("128Mi") == 128 * 1024 * 1024
     assert K8sClient._parse_memory("1Gi") == 1024 ** 3
+
+def test_dashboard_api():
+    from src.dashboard.app import app
+    with app.test_client() as client:
+        res = client.get('/api/state')
+        assert res.status_code == 200
+        data = res.get_json()
+        assert "metrics" in data
+        assert "nodes" in data
+        assert len(data["nodes"]) == 3
+

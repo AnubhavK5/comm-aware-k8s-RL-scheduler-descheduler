@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KubeRL · Intelligent Kubernetes RL Scheduler & Descheduler</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Vis.js Network for Communication Topology -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            200: '#ddd6fe',
+                            400: '#a78bfa',
+                            500: '#8b5cf6',
+                            600: '#6d28d9',
+                            700: '#5b21b6',
+                            primary: '#6366f1',
+                            dark: '#4f46e5'
+                        },
+                        surface: '#f6f7fb',
+                        card: '#ffffff'
+                    },
+                    borderRadius: {
+                        '2xl': '1.25rem',
+                        '3xl': '1.75rem',
+                        '4xl': '2.25rem'
+                    },
+                    boxShadow: {
+                        'soft': '0 10px 30px -5px rgba(0, 0, 0, 0.04), 0 4px 10px -2px rgba(0, 0, 0, 0.02)',
+                        'card': '0 2px 12px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.02)',
+                        'floating': '0 20px 40px -10px rgba(99, 102, 241, 0.15)'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f5f6fa;
+            color: #1e293b;
+        }
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        #network-graph {
+            height: 390px;
+            width: 100%;
+            background: #ffffff;
+            border-radius: 1.25rem;
+        }
+        /* Custom scrollbar for modern light theme */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        .sparkline-svg {
+            overflow: visible;
+        }
+        .pulse-subtle {
+            animation: pulseSubtle 2.5s infinite;
+        }
+        @keyframes pulseSubtle {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.85; transform: scale(1.02); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-brand-100 selection:text-brand-700">
+
+    <!-- Top Navigation Header inspired by Filllo design -->
+    <header class="bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-40 px-6 py-3.5 transition-all">
+        <div class="max-w-[1520px] mx-auto flex items-center justify-between gap-4">
+            
+            <!-- Left: Logo & Navigation Tabs -->
+            <div class="flex items-center gap-8">
+                <!-- Brand Logo -->
+                <div class="flex items-center gap-2.5 cursor-pointer">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-primary to-purple-500 flex items-center justify-center text-white shadow-md shadow-brand-primary/20">
+                        <i data-lucide="layers" class="w-5 h-5"></i>
+                    </div>
+                    <div class="flex flex-col">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-lg font-extrabold tracking-tight text-slate-900">kube<span class="text-brand-primary">rl</span></span>
+                            <span class="px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase rounded-full bg-brand-50 text-brand-primary border border-brand-100">v2.0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Nav Pill Menu (Active style matching Dribbble inspiration) -->
+                <nav class="hidden md:flex items-center gap-2">
+                    <button class="flex items-center gap-2 px-4 py-2 rounded-full bg-brand-50 text-brand-primary font-semibold text-xs transition">
+                        <span class="w-2 h-2 rounded-full bg-brand-primary"></span>
+                        <span>Dashboard</span>
+                    </button>
+                    <button onclick="scrollToSection('main-topology-card')" class="flex items-center gap-2 px-3.5 py-2 rounded-full hover:bg-slate-100 text-slate-600 font-medium text-xs transition">
+                        <i data-lucide="git-fork" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span>Topology Graph</span>
+                    </button>
+                    <button onclick="switchMainTab('nodes')" class="flex items-center gap-2 px-3.5 py-2 rounded-full hover:bg-slate-100 text-slate-600 font-medium text-xs transition">
+                        <i data-lucide="server" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span>Worker Nodes</span>
+                    </button>
+                    <button onclick="switchMainTab('state')" class="flex items-center gap-2 px-3.5 py-2 rounded-full hover:bg-slate-100 text-slate-600 font-medium text-xs transition">
+                        <i data-lucide="cpu" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span>7D Observation</span>
+                    </button>
+                    <button onclick="switchMainTab('bench')" class="flex items-center gap-2 px-3.5 py-2 rounded-full hover:bg-slate-100 text-slate-600 font-medium text-xs transition">
+                        <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span>Benchmark</span>
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Right: System Controls & Cluster Status Badge -->
+            <div class="flex items-center gap-3">
+                <!-- Cluster Telemetry Mode Toggle -->
+                <div class="flex items-center bg-slate-100 p-1 rounded-full border border-slate-200/80">
+                    <button id="mode-sim-btn" onclick="setClusterMode('simulated')" class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white text-slate-800 shadow-xs transition">
+                        <i data-lucide="cpu" class="w-3.5 h-3.5 text-indigo-500"></i>
+                        <span>Simulation</span>
+                    </button>
+                    <button id="mode-live-btn" onclick="setClusterMode('live')" class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-slate-500 hover:text-slate-800 transition">
+                        <i data-lucide="cloud" class="w-3.5 h-3.5 text-emerald-500"></i>
+                        <span>Live K8s</span>
+                    </button>
+                </div>
+
+                <!-- Status Pill -->
+                <div id="status-pill" class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-semibold">
+                    <span id="status-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span id="status-text">PPO Active · Simulation</span>
+                </div>
+
+                <!-- Drift Injection Dropdown -->
+                <div class="relative">
+                    <select id="drift-select" onchange="injectSelectedDrift()" class="appearance-none bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-slate-700 text-xs font-medium rounded-full pl-3.5 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 cursor-pointer transition">
+                        <option value="" disabled selected>⚡ Workload Drift</option>
+                        <option value="spike_frontend_payment">Surge Frontend ↔ Payment Traffic</option>
+                        <option value="overload_worker1">Spike CPU on Worker 1</option>
+                        <option value="random_drift">Dynamic Traffic & CPU Drift</option>
+                    </select>
+                    <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                </div>
+
+                <!-- Reset Button -->
+                <button onclick="resetCluster()" title="Reset Cluster Baseline" class="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-rose-50 hover:text-rose-600 text-slate-500 border border-slate-200/80 rounded-full transition">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <main class="max-w-[1520px] mx-auto px-6 py-6 flex-1 w-full">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- ================= LEFT COLUMN (Sidebar Deck) ================= -->
+            <aside class="lg:col-span-4 xl:col-span-3 space-y-5">
+
+                <!-- 1. Profile / Cluster Admin Card -->
+                <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-card flex items-center justify-between">
+                    <div class="flex items-center gap-3.5">
+                        <div class="relative">
+                            <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-md shadow-indigo-100">
+                                <i data-lucide="command" class="w-6 h-6"></i>
+                            </div>
+                            <span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white"></span>
+                        </div>
+                        <div>
+                            <p class="text-xs font-medium text-slate-400">Cluster Environment</p>
+                            <h3 class="text-sm font-bold text-slate-800 tracking-tight flex items-center gap-1.5">
+                                K8s-Microservices
+                                <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400"></i>
+                            </h3>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 text-[11px] font-semibold text-slate-500 bg-slate-100 rounded-full">v1.28</span>
+                </div>
+
+                <!-- 2. Optimization Balance & Objective Card (Inspired by "MY BALANCE" 1158304.01 USD in image) -->
+                <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-card space-y-5">
+                    <div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Policy Model</span>
+                            <span class="text-xs font-semibold text-brand-primary flex items-center gap-1">
+                                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> KubeAI + Marchese
+                            </span>
+                        </div>
+                        <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-4">COMBINED OBJECTIVE COST</p>
+                        <div class="flex items-baseline gap-2 mt-1">
+                            <h2 id="metric-cost" class="text-3xl font-extrabold text-slate-900 tracking-tight font-mono">--</h2>
+                            <span class="text-xs font-bold text-slate-400">INDEX</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                            <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            Formula: <span class="font-mono text-slate-600">J = 0.5·Var + 0.5·Comm</span>
+                        </p>
+                    </div>
+
+                    <!-- Dual Mini Stat Chips (Income / Expenses style in reference image) -->
+                    <div class="grid grid-cols-2 gap-3 pt-1">
+                        <!-- Comm Latency Pill -->
+                        <div class="bg-slate-50/80 border border-slate-100 rounded-2xl p-3 flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+                                <i data-lucide="arrow-down-left" class="w-4 h-4"></i>
+                            </div>
+                            <div class="overflow-hidden">
+                                <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Latency</p>
+                                <p id="sidebar-latency-val" class="text-xs font-bold font-mono text-slate-800 truncate">-- ms</p>
+                            </div>
+                        </div>
+
+                        <!-- Load Variance Pill -->
+                        <div class="bg-slate-50/80 border border-slate-100 rounded-2xl p-3 flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                <i data-lucide="scale" class="w-4 h-4"></i>
+                            </div>
+                            <div class="overflow-hidden">
+                                <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Variance</p>
+                                <p id="sidebar-variance-val" class="text-xs font-bold font-mono text-slate-800 truncate">--</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Interactive Scheduler & Descheduler Action Card (Directly inspired by "Buy / Sell / Convert" card) -->
+                <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-card space-y-5">
+                    
+                    <!-- Action Tabs: Schedule / Deschedule -->
+                    <div class="flex items-center border-b border-slate-100">
+                        <button id="sidebar-tab-sched" onclick="switchSidebarActionTab('schedule')" class="flex-1 pb-3 text-xs font-bold text-brand-primary border-b-2 border-brand-primary transition">
+                            Schedule Pod
+                        </button>
+                        <button id="sidebar-tab-desched" onclick="switchSidebarActionTab('deschedule')" class="flex-1 pb-3 text-xs font-bold text-slate-400 hover:text-slate-600 border-b-2 border-transparent transition">
+                            RL Descheduler
+                        </button>
+                    </div>
+
+                    <!-- Tab A: Schedule Pod Form (Like "Enter Amount (BTC)" & "You will spend (USD)" in image) -->
+                    <div id="sidebar-panel-schedule" class="space-y-4">
+                        <!-- Select Microservice Tier -->
+                        <div class="space-y-1.5">
+                            <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Microservice Tier</label>
+                            <div class="relative">
+                                <select id="sched-app-select" class="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200/80 rounded-2xl px-3.5 py-2.5 text-xs font-semibold text-slate-700 appearance-none focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition cursor-pointer">
+                                    <option value="frontend">Frontend (High comm ↔ Cart & Payment)</option>
+                                    <option value="cart">Cart Service (Comm ↔ Order)</option>
+                                    <option value="order">Order Service (Comm ↔ Payment)</option>
+                                    <option value="payment">Payment Service (Heavy CPU & Comm)</option>
+                                </select>
+                                <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                            </div>
+                        </div>
+
+                        <!-- CPU Input Field (Styled like Amount box in inspiration) -->
+                        <div class="space-y-1.5">
+                            <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">CPU Requirement</label>
+                            <div class="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-2xl px-3.5 py-2">
+                                <input id="sched-cpu-input" type="number" step="0.05" value="0.35" min="0.1" max="2.0" class="bg-transparent text-sm font-bold font-mono text-slate-800 focus:outline-none w-24">
+                                <span class="px-2.5 py-1 text-[11px] font-semibold text-slate-600 bg-white border border-slate-200/60 rounded-xl shadow-2xs">Cores</span>
+                            </div>
+                        </div>
+
+                        <!-- RAM Input Field -->
+                        <div class="space-y-1.5">
+                            <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Memory Requirement</label>
+                            <div class="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-2xl px-3.5 py-2">
+                                <input id="sched-mem-input" type="number" step="0.1" value="0.50" min="0.2" max="4.0" class="bg-transparent text-sm font-bold font-mono text-slate-800 focus:outline-none w-24">
+                                <span class="px-2.5 py-1 text-[11px] font-semibold text-slate-600 bg-white border border-slate-200/60 rounded-xl shadow-2xs">GB RAM</span>
+                            </div>
+                        </div>
+
+                        <!-- Submit Button (Primary Purple button matching "Convert" button in image) -->
+                        <button onclick="submitSidebarSchedulePod()" class="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-brand-primary to-purple-600 hover:from-brand-dark hover:to-purple-700 text-white font-bold text-xs shadow-md shadow-brand-primary/25 transition flex items-center justify-center gap-2 active:scale-[0.99]">
+                            <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                            <span>Score & Place Pod (KubeAI)</span>
+                        </button>
+                    </div>
+
+                    <!-- Tab B: Descheduler Actions -->
+                    <div id="sidebar-panel-deschedule" class="hidden space-y-4">
+                        <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1.5">
+                            <div class="flex items-center gap-2 text-xs font-bold text-slate-800">
+                                <i data-lucide="shield-check" class="w-4 h-4 text-emerald-500"></i>
+                                <span>Anti-Flapping Safety Guard</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">
+                                Enforces 30s replica cooldown, minimum 1 replica preservation, and eviction cost threshold penalty.
+                            </p>
+                        </div>
+
+                        <!-- Single Deschedule Step -->
+                        <button onclick="triggerDescheduleStep()" class="w-full py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-2">
+                            <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i>
+                            <span>Execute 1 PPO Deschedule Step</span>
+                        </button>
+
+                        <!-- Auto Deschedule Toggle -->
+                        <button id="auto-btn" onclick="toggleAutoDeschedule()" class="w-full py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200/80 transition flex items-center justify-center gap-2">
+                            <i data-lucide="play" class="w-4 h-4 text-emerald-500"></i>
+                            <span id="auto-text">Continuous Auto Loop: OFF</span>
+                        </button>
+                    </div>
+
+                </div>
+
+            </aside>
+
+
+            <!-- ================= RIGHT MAIN AREA ================= -->
+            <div class="lg:col-span-8 xl:col-span-9 space-y-6">
+
+                <!-- 1. Top Row: 4 Modern Metric Cards with Dynamic Sparklines (Matching Bitcoin, Litecoin, Binance, Ethereum in image) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+
+                    <!-- Card 1: Resource Variance -->
+                    <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-card flex flex-col justify-between space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-9 h-9 rounded-2xl bg-rose-50 text-rose-500 border border-rose-100 flex items-center justify-center font-bold">
+                                    <i data-lucide="scale" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs font-bold text-slate-800">Resource Variance</h4>
+                                    <p class="text-[10px] text-slate-400">σ² CPU Balance</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-0.5">
+                            <h3 id="metric-var" class="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">--</h3>
+                        </div>
+                        <!-- Mini Sparkline & Status Tag -->
+                        <div class="flex items-end justify-between pt-1">
+                            <div class="w-28 h-8">
+                                <svg id="sparkline-var" class="w-full h-full sparkline-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
+                                    <path d="M 0,20 Q 25,28 50,15 T 100,8" fill="none" stroke="#f43f5e" stroke-width="2.2" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                            <span id="badge-var-change" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
+                                Load Spread
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Comm Latency Cost -->
+                    <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-card flex flex-col justify-between space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-9 h-9 rounded-2xl bg-teal-50 text-teal-600 border border-teal-100 flex items-center justify-center font-bold">
+                                    <i data-lucide="activity" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs font-bold text-slate-800">Comm Latency</h4>
+                                    <p class="text-[10px] text-slate-400">Cross-Node Traffic</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-0.5">
+                            <h3 id="metric-comm" class="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">-- ms</h3>
+                        </div>
+                        <!-- Mini Sparkline & Status Tag -->
+                        <div class="flex items-end justify-between pt-1">
+                            <div class="w-28 h-8">
+                                <svg id="sparkline-comm" class="w-full h-full sparkline-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
+                                    <path d="M 0,24 Q 25,8 50,18 T 100,6" fill="none" stroke="#0d9488" stroke-width="2.2" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-100">
+                                0.2 vs 5.0ms
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Card 3: Combined Objective Score -->
+                    <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-card flex flex-col justify-between space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-9 h-9 rounded-2xl bg-purple-50 text-purple-600 border border-purple-100 flex items-center justify-center font-bold">
+                                    <i data-lucide="target" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs font-bold text-slate-800">Combined Cost</h4>
+                                    <p class="text-[10px] text-slate-400">Total Objective J</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-0.5">
+                            <h3 id="card-combined-cost" class="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">--</h3>
+                        </div>
+                        <!-- Mini Sparkline & Status Tag -->
+                        <div class="flex items-end justify-between pt-1">
+                            <div class="w-28 h-8">
+                                <svg id="sparkline-cost" class="w-full h-full sparkline-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
+                                    <path d="M 0,22 Q 25,25 50,14 T 100,5" fill="none" stroke="#8b5cf6" stroke-width="2.2" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-100">
+                                Optimal
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Card 4: Descheduler Evictions & Safety Guard -->
+                    <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-card flex flex-col justify-between space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-9 h-9 rounded-2xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center font-bold">
+                                    <i data-lucide="shield" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs font-bold text-slate-800">PPO Evictions</h4>
+                                    <p class="text-[10px] text-slate-400">Reschedules Safe</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-0.5">
+                            <h3 id="metric-evictions" class="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">0</h3>
+                        </div>
+                        <!-- Mini Sparkline & Status Tag -->
+                        <div class="flex items-end justify-between pt-1">
+                            <div class="w-28 h-8">
+                                <svg class="w-full h-full sparkline-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
+                                    <path d="M 0,26 L 30,26 L 35,14 L 65,14 L 70,6 L 100,6" fill="none" stroke="#f59e0b" stroke-width="2.2" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100 flex items-center gap-1">
+                                <i data-lucide="check" class="w-3 h-3"></i> Guarded
+                            </span>
+                        </div>
+                    </div>
+
+                </div>
+
+
+                <!-- 2. Main Center Card: "Statistics" & Primary Visualizer (Inspired by the big candlestick/line chart in image) -->
+                <div id="main-topology-card" class="bg-white rounded-3xl p-6 border border-slate-100 shadow-card space-y-5">
+                    
+                    <!-- Header with Title & Filter Pills (1d, 1 Week, 1m, 3m style from Dribbble image) -->
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                        <div>
+                            <h3 class="text-base font-extrabold text-slate-900 tracking-tight">Cluster Visualizer & Analytics</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Live inter-pod communication, node placement, and reinforcement learning telemetry</p>
+                        </div>
+
+                        <!-- Filter View Pills (Styled like 1d, 1 Week, 1m, 3m in image) -->
+                        <div class="flex items-center gap-1 bg-slate-50 p-1 rounded-full border border-slate-200/80 text-xs font-semibold">
+                            <button id="pill-topology" onclick="switchMainTab('topology')" class="px-3.5 py-1.5 rounded-full bg-slate-900 text-white shadow-xs transition">
+                                Topology Graph
+                            </button>
+                            <button id="pill-nodes" onclick="switchMainTab('nodes')" class="px-3.5 py-1.5 rounded-full text-slate-600 hover:text-slate-900 transition">
+                                Worker Nodes
+                            </button>
+                            <button id="pill-state" onclick="switchMainTab('state')" class="px-3.5 py-1.5 rounded-full text-slate-600 hover:text-slate-900 transition">
+                                7D Vector
+                            </button>
+                            <button id="pill-bench" onclick="switchMainTab('bench')" class="px-3.5 py-1.5 rounded-full text-slate-600 hover:text-slate-900 transition">
+                                Benchmark
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- View 1: Topology Graph -->
+                    <div id="view-topology" class="space-y-3">
+                        <div class="flex flex-wrap items-center justify-between text-xs gap-3 px-1">
+                            <div class="flex items-center gap-4">
+                                <span class="flex items-center gap-1.5 font-semibold text-emerald-600">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Intra-Node (0.2ms latency)
+                                </span>
+                                <span class="flex items-center gap-1.5 font-semibold text-rose-500">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span> Cross-Node (5.0ms latency RTT)
+                                </span>
+                            </div>
+                            <span class="text-slate-400 text-[11px] font-medium">Drag nodes to reorganize · Scroll to zoom</span>
+                        </div>
+                        <div id="network-graph" class="border border-slate-100 shadow-inner"></div>
+                    </div>
+
+                    <!-- View 2: Worker Nodes Cards -->
+                    <div id="view-nodes" class="hidden space-y-4">
+                        <div class="flex items-center justify-between text-xs text-slate-500 px-1">
+                            <span>Resource allocations per Kubernetes worker node</span>
+                            <span id="nodes-summary-text" class="font-semibold text-slate-700">3 Nodes Active</span>
+                        </div>
+                        <div id="nodes-container" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <!-- Dynamic Node Cards Rendered via JS -->
+                        </div>
+                    </div>
+
+                    <!-- View 3: 7D State Vector Inspector -->
+                    <div id="view-state" class="hidden space-y-4">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider">KubeAI 7-Dimensional Observation Vector</h4>
+                                <p class="text-xs text-slate-400 mt-0.5">Inspect real-time suitability metrics for candidate nodes</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="text-xs font-semibold text-slate-500">Select Pod:</label>
+                                <select id="state-pod-select" onchange="updateStateVectorView()" class="bg-white border border-slate-200 text-xs font-semibold text-slate-700 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 cursor-pointer">
+                                    <!-- Populated dynamically -->
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 7D Formula Box -->
+                        <div class="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 text-xs text-slate-600 space-y-1">
+                            <span class="font-bold text-slate-800">Suitability Formulation (Eq. 10):</span>
+                            <p class="font-mono text-brand-primary font-semibold text-[11px]">
+                                S_n = 2.0·cpu_eff + 2.0·mem_eff - 0.5·disk_io - 1.5·net_lat - 0.3·temp
+                            </p>
+                        </div>
+
+                        <!-- Candidate Node Suitability Table -->
+                        <div id="state-table" class="space-y-3">
+                            <!-- Populated dynamically by JS -->
+                        </div>
+                    </div>
+
+                    <!-- View 4: Comparative Benchmark -->
+                    <div id="view-bench" class="hidden space-y-5">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider">4-Algorithm Empirical Evaluation</h4>
+                                <p class="text-xs text-slate-400 mt-0.5">Default K8s vs Marchese 2025 vs KubeAI 2026 vs Proposed Dual-Agent Framework</p>
+                            </div>
+                            <button id="run-bench-btn" onclick="triggerBenchmark()" class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-xs transition">
+                                <i data-lucide="play-circle" class="w-4 h-4"></i>
+                                <span>Run Live Benchmark</span>
+                            </button>
+                        </div>
+
+                        <!-- Chart Container -->
+                        <div class="h-64 bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
+                            <canvas id="benchmarkChart"></canvas>
+                        </div>
+
+                        <!-- Results Table -->
+                        <div class="overflow-x-auto rounded-2xl border border-slate-100">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
+                                    <tr>
+                                        <th class="p-3">Algorithm</th>
+                                        <th class="p-3">Comm Latency</th>
+                                        <th class="p-3">Load Variance</th>
+                                        <th class="p-3">Total Cost (J)</th>
+                                        <th class="p-3">Evictions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="benchmark-tbody" class="divide-y divide-slate-100 font-mono text-slate-700">
+                                    <!-- Dynamic Benchmark Rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+
+
+                <!-- 3. Bottom Two Split Panels (Inspired by "Transaction" and "My Orders" in image) -->
+                <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+
+                    <!-- Left Bottom: Active Pod Placements & Traffic (Modeled after "Transaction" table in image) -->
+                    <div class="xl:col-span-7 bg-white rounded-3xl p-6 border border-slate-100 shadow-card space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div class="flex items-center gap-2">
+                                <h4 class="text-sm font-extrabold text-slate-900 tracking-tight">Active Pod Allocations</h4>
+                                <span id="pod-total-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">8 Pods</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="px-3 py-1 rounded-full text-xs font-semibold bg-slate-50 text-slate-600 border border-slate-200/60">
+                                    Filter: All Tiers
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Modern Pod Table -->
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs">
+                                <thead>
+                                    <tr class="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                        <th class="pb-2.5">Pod & Tier</th>
+                                        <th class="pb-2.5">Node Location</th>
+                                        <th class="pb-2.5">CPU / RAM</th>
+                                        <th class="pb-2.5 text-right">Inspect</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pods-table-body" class="divide-y divide-slate-50">
+                                    <!-- Dynamically generated rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Right Bottom: Controller Activity & Decisions Log (Modeled after "My Orders" in image) -->
+                    <div class="xl:col-span-5 bg-white rounded-3xl p-6 border border-slate-100 shadow-card space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div class="flex items-center gap-2">
+                                <h4 class="text-sm font-extrabold text-slate-900 tracking-tight">Recent Decisions</h4>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-brand-primary border border-purple-100">Live</span>
+                            </div>
+                            <button onclick="fetchState()" class="text-xs font-semibold text-slate-400 hover:text-slate-600 flex items-center gap-1 transition">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                                <span>Refresh</span>
+                            </button>
+                        </div>
+
+                        <!-- Real-time Event Feed -->
+                        <div id="log-container" class="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        let currentState = null;
+        let networkGraph = null;
+        let benchmarkChart = null;
+        let currentMainTab = 'topology';
+        let currentSidebarTab = 'schedule';
+
+        // History queues for live mini-sparklines
+        const historyVariance = [0.038, 0.035, 0.032, 0.029, 0.028, 0.027, 0.025];
+        const historyLatency = [3800, 3600, 3400, 3200, 3100, 2900, 2695];
+        const historyCost = [24.5, 22.1, 20.4, 18.2, 16.9, 15.6, 14.8];
+
+        // Microservice Tier styling
+        const tierConfig = {
+            'frontend': { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200/80', dot: 'bg-blue-500', name: 'Frontend' },
+            'cart': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200/80', dot: 'bg-amber-500', name: 'Cart' },
+            'order': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200/80', dot: 'bg-purple-500', name: 'Order' },
+            'payment': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200/80', dot: 'bg-emerald-500', name: 'Payment' },
+        };
+
+        // Node badge colors
+        const nodeColorMap = {
+            'rl-scheduler-worker': { badge: 'bg-indigo-50 text-indigo-700 border-indigo-200', dot: '#6366f1', label: 'Worker 1' },
+            'rl-scheduler-worker2': { badge: 'bg-purple-50 text-purple-700 border-purple-200', dot: '#a855f7', label: 'Worker 2' },
+            'rl-scheduler-worker3': { badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: '#10b981', label: 'Worker 3' }
+        };
+
+        // Initialize Lucide icons on load
+        lucide.createIcons();
+
+        async function fetchState() {
+            try {
+                const res = await fetch('/api/state');
+                const data = await res.json();
+                currentState = data;
+                renderDashboard(data);
+            } catch (err) {
+                console.error('Error fetching state:', err);
+            }
+        }
+
+        function renderDashboard(data) {
+            // Mode indicator in UI
+            const mode = data.mode || 'simulated';
+            const simBtn = document.getElementById('mode-sim-btn');
+            const liveBtn = document.getElementById('mode-live-btn');
+            const statusText = document.getElementById('status-text');
+            const statusDot = document.getElementById('status-dot');
+
+            if (mode === 'live') {
+                if (simBtn) simBtn.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-slate-500 hover:text-slate-800 transition";
+                if (liveBtn) liveBtn.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white text-emerald-700 shadow-xs transition";
+                if (statusText) statusText.innerText = "PPO Active · Live K8s Cluster";
+                if (statusDot) statusDot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+            } else {
+                if (simBtn) simBtn.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white text-slate-800 shadow-xs transition";
+                if (liveBtn) liveBtn.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-slate-500 hover:text-slate-800 transition";
+                if (statusText) statusText.innerText = "PPO Active · Simulated Cluster";
+                if (statusDot) statusDot.className = "w-2 h-2 rounded-full bg-indigo-500 animate-pulse";
+            }
+
+            // 1. KPI & Main Metrics
+            const varVal = data.metrics.resource_variance.toFixed(4);
+            const commVal = data.metrics.comm_latency_cost.toFixed(1);
+            const costVal = data.metrics.combined_cost.toFixed(3);
+
+            document.getElementById('metric-var').innerText = varVal;
+            document.getElementById('metric-comm').innerText = commVal + ' ms';
+            document.getElementById('card-combined-cost').innerText = costVal;
+            document.getElementById('metric-cost').innerText = costVal;
+            document.getElementById('metric-evictions').innerText = data.eviction_count;
+
+            document.getElementById('sidebar-latency-val').innerText = commVal + ' ms';
+            document.getElementById('sidebar-variance-val').innerText = varVal;
+            document.getElementById('pod-total-badge').innerText = `${data.pods.length} Pods`;
+
+            // Update sparkline histories
+            updateSparklineHistory(data.metrics.resource_variance, data.metrics.comm_latency_cost, data.metrics.combined_cost);
+
+            // Auto-loop button styling
+            const autoBtn = document.getElementById('auto-btn');
+            const autoText = document.getElementById('auto-text');
+            if (data.auto_descheduling) {
+                autoBtn.className = "w-full py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-200 transition flex items-center justify-center gap-2 pulse-subtle";
+                autoText.innerText = "Continuous Auto Loop: RUNNING";
+            } else {
+                autoBtn.className = "w-full py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200/80 transition flex items-center justify-center gap-2";
+                autoText.innerText = "Continuous Auto Loop: OFF";
+            }
+
+            // 2. Render Node Cards
+            renderNodes(data.nodes);
+
+            // 3. Render Vis.js Network Topology
+            renderNetworkGraph(data.pods, data.edges, data.nodes);
+
+            // 4. Render Active Pods Table
+            renderPodsTable(data.pods);
+
+            // 5. Render Activity Log
+            renderLogs(data.logs);
+
+            // 6. Update State Vector Dropdown
+            updatePodSelectOptions(data.pods);
+            if (currentMainTab === 'state') {
+                updateStateVectorView();
+            }
+
+            lucide.createIcons();
+        }
+
+        // Generate SVG Path for Sparkline
+        function updateSparklineHistory(variance, latency, cost) {
+            historyVariance.push(variance);
+            if (historyVariance.length > 10) historyVariance.shift();
+
+            historyLatency.push(latency);
+            if (historyLatency.length > 10) historyLatency.shift();
+
+            historyCost.push(cost);
+            if (historyCost.length > 10) historyCost.shift();
+
+            drawSparkline('sparkline-var', historyVariance, '#f43f5e');
+            drawSparkline('sparkline-comm', historyLatency, '#0d9488');
+            drawSparkline('sparkline-cost', historyCost, '#8b5cf6');
+        }
+
+        function drawSparkline(elementId, values, strokeColor) {
+            const svg = document.getElementById(elementId);
+            if (!svg || values.length < 2) return;
+
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const range = (max - min) === 0 ? 1 : (max - min);
+
+            const width = 100;
+            const height = 30;
+            const step = width / (values.length - 1);
+
+            let points = values.map((v, i) => {
+                const x = i * step;
+                const normalized = (v - min) / range;
+                const y = (height - 6) - (normalized * (height - 12)) + 3;
+                return { x, y };
+            });
+
+            // Build smooth Bezier path
+            let d = `M ${points[0].x},${points[0].y}`;
+            for (let i = 0; i < points.length - 1; i++) {
+                const xMid = (points[i].x + points[i + 1].x) / 2;
+                const yMid = (points[i].y + points[i + 1].y) / 2;
+                d += ` Q ${points[i].x},${points[i].y} ${xMid},${yMid}`;
+            }
+            const last = points[points.length - 1];
+            d += ` T ${last.x},${last.y}`;
+
+            svg.innerHTML = `
+                <path d="${d}" fill="none" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="${last.x}" cy="${last.y}" r="2.5" fill="${strokeColor}"/>
+            `;
+        }
+
+        function renderNodes(nodes) {
+            const container = document.getElementById('nodes-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            nodes.forEach(node => {
+                const cpuBarColor = node.cpu_pct > 75 ? 'bg-rose-500' : (node.cpu_pct > 50 ? 'bg-amber-500' : 'bg-brand-primary');
+                const memBarColor = node.mem_pct > 75 ? 'bg-rose-500' : 'bg-emerald-500';
+
+                let podsHtml = '';
+                if (!node.pods || node.pods.length === 0) {
+                    podsHtml = `<div class="p-3 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-2xl">No pods currently hosted</div>`;
+                } else {
+                    node.pods.forEach(p => {
+                        const style = tierConfig[p.app] || { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200', dot: 'bg-slate-400', name: p.app };
+                        podsHtml += `
+                            <div onclick="selectPodForInspection('${p.name}')" class="p-2.5 rounded-2xl border ${style.border} ${style.bg} flex items-center justify-between cursor-pointer hover:shadow-xs transition group">
+                                <div class="overflow-hidden">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-2 h-2 rounded-full ${style.dot}"></span>
+                                        <span class="font-mono text-xs font-semibold truncate ${style.text}">${p.name}</span>
+                                    </div>
+                                    <p class="text-[10px] text-slate-400 mt-0.5">${p.cpu}c · ${p.mem}GB RAM</p>
+                                </div>
+                                <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full bg-white text-slate-600 border border-slate-200/60 shadow-2xs">${p.app}</span>
+                            </div>
+                        `;
+                    });
+                }
+
+                const cardHtml = `
+                    <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-card flex flex-col justify-between space-y-4">
+                        <div class="space-y-3.5">
+                            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                                <div>
+                                    <h4 class="text-xs font-bold text-slate-900 font-mono tracking-tight">${node.name}</h4>
+                                    <p class="text-[11px] text-slate-400">${node.zone} · <span class="text-emerald-600 font-semibold">${node.status}</span></p>
+                                </div>
+                                <span class="px-2.5 py-1 text-xs font-bold font-mono rounded-full bg-slate-50 text-brand-primary border border-slate-200/60">
+                                    ${node.pod_count} Pods
+                                </span>
+                            </div>
+
+                            <!-- CPU Utilization Bar -->
+                            <div class="space-y-1">
+                                <div class="flex justify-between text-xs">
+                                    <span class="text-slate-400 font-medium">CPU Usage</span>
+                                    <span class="font-mono font-bold text-slate-700">${node.used_cpu} / ${node.cpu_allocatable}c (${node.cpu_pct}%)</span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                    <div class="${cpuBarColor} h-2 rounded-full transition-all duration-500" style="width: ${node.cpu_pct}%"></div>
+                                </div>
+                            </div>
+
+                            <!-- RAM Utilization Bar -->
+                            <div class="space-y-1">
+                                <div class="flex justify-between text-xs">
+                                    <span class="text-slate-400 font-medium">Memory Usage</span>
+                                    <span class="font-mono font-bold text-slate-700">${node.used_mem} / ${node.mem_allocatable}G (${node.mem_pct}%)</span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                    <div class="${memBarColor} h-2 rounded-full transition-all duration-500" style="width: ${node.mem_pct}%"></div>
+                                </div>
+                            </div>
+
+                            <!-- Telemetry stats -->
+                            <div class="flex items-center justify-between text-[11px] text-slate-400 pt-1.5 border-t border-slate-100 font-mono">
+                                <span>Temp: <strong class="text-slate-700">${node.temp_c}°C</strong></span>
+                                <span>Disk I/O: <strong class="text-slate-700">${node.disk_io}</strong></span>
+                            </div>
+                        </div>
+
+                        <!-- Hosted Pods in Node -->
+                        <div class="space-y-2 pt-1 border-t border-slate-100">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Hosted Microservices</span>
+                            <div class="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
+                                ${podsHtml}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += cardHtml;
+            });
+        }
+
+        // Render Vis.js Network Topology styled cleanly for light theme
+        function renderNetworkGraph(pods, edges, nodes) {
+            const container = document.getElementById('network-graph');
+            if (!container) return;
+
+            const visNodes = pods.map(p => {
+                const nodeColors = {
+                    'rl-scheduler-worker': { bg: '#eef2ff', border: '#6366f1', text: '#4338ca' },
+                    'rl-scheduler-worker2': { bg: '#faf5ff', border: '#a855f7', text: '#6b21a8' },
+                    'rl-scheduler-worker3': { bg: '#ecfdf5', border: '#10b981', text: '#065f46' }
+                };
+                const colorSet = nodeColors[p.node] || { bg: '#f8fafc', border: '#64748b', text: '#1e293b' };
+                const shortNode = p.node.replace('rl-scheduler-', '');
+
+                return {
+                    id: p.name,
+                    label: `${p.app.toUpperCase()}\n[${shortNode}]`,
+                    color: {
+                        background: colorSet.bg,
+                        border: colorSet.border,
+                        highlight: { background: '#ffffff', border: '#4f46e5' }
+                    },
+                    borderWidth: 2,
+                    font: { color: colorSet.text, size: 11, face: 'Plus Jakarta Sans', bold: '600' },
+                    shape: 'box',
+                    margin: { top: 9, bottom: 9, left: 12, right: 12 },
+                    shadow: { enabled: true, color: 'rgba(0,0,0,0.04)', size: 8, x: 0, y: 3 }
+                };
+            });
+
+            const visEdges = edges.map(e => {
+                const isCross = e.cross_node;
+                return {
+                    from: e.from,
+                    to: e.to,
+                    label: `${e.calls} c/s\n(${e.latency_ms}ms)`,
+                    color: {
+                        color: isCross ? '#f43f5e' : '#10b981',
+                        highlight: isCross ? '#e11d48' : '#059669'
+                    },
+                    width: Math.min(4, Math.max(1.5, e.calls / 50)),
+                    dashes: isCross ? [4, 4] : false,
+                    arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+                    font: {
+                        color: isCross ? '#e11d48' : '#047857',
+                        size: 9,
+                        face: 'Plus Jakarta Sans',
+                        align: 'top',
+                        background: '#ffffff',
+                        strokeWidth: 0
+                    }
+                };
+            });
+
+            const data = { nodes: new vis.DataSet(visNodes), edges: new vis.DataSet(visEdges) };
+            const options = {
+                physics: {
+                    solver: 'forceAtlas2Based',
+                    forceAtlas2Based: {
+                        gravitationalConstant: -40,
+                        centralGravity: 0.012,
+                        springLength: 105,
+                        springConstant: 0.07
+                    }
+                },
+                interaction: { hover: true, zoomView: true, dragView: true }
+            };
+
+            if (!networkGraph) {
+                networkGraph = new vis.Network(container, data, options);
+            } else {
+                networkGraph.setData(data);
+            }
+        }
+
+        // Render Active Pods Table (Inspired by "Transaction" table in image)
+        function renderPodsTable(pods) {
+            const tbody = document.getElementById('pods-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            pods.forEach(p => {
+                const tier = tierConfig[p.app] || { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200', dot: 'bg-slate-400', name: p.app };
+                const nodeInfo = nodeColorMap[p.node] || { badge: 'bg-slate-50 text-slate-700 border-slate-200', label: p.node };
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50/80 transition group">
+                        <td class="py-3">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full ${tier.dot}"></span>
+                                <div>
+                                    <p class="font-mono text-xs font-bold text-slate-800">${p.name}</p>
+                                    <span class="inline-block mt-0.5 px-2 py-0.2 rounded-full text-[9px] font-bold uppercase ${tier.bg} ${tier.text} border ${tier.border}">
+                                        ${tier.name}
+                                    </span>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-3">
+                            <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${nodeInfo.badge} border">
+                                ${nodeInfo.label}
+                            </span>
+                        </td>
+                        <td class="py-3 font-mono text-xs text-slate-600">
+                            <strong>${p.cpu}c</strong> · ${p.mem}GB
+                        </td>
+                        <td class="py-3 text-right">
+                            <button onclick="selectPodForInspection('${p.name}')" class="px-2.5 py-1 text-[11px] font-bold text-brand-primary hover:bg-brand-50 rounded-lg transition">
+                                Inspect 7D →
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Render Activity Log (Inspired by "My Orders" in image)
+        function renderLogs(logs) {
+            const container = document.getElementById('log-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            logs.slice(0, 15).forEach(l => {
+                const badgeStyles = {
+                    'success': 'bg-emerald-50 text-emerald-700 border-emerald-100',
+                    'warning': 'bg-amber-50 text-amber-700 border-amber-100',
+                    'error': 'bg-rose-50 text-rose-700 border-rose-100',
+                    'info': 'bg-slate-50 text-slate-700 border-slate-200/60'
+                };
+                const badge = badgeStyles[l.level] || badgeStyles['info'];
+
+                container.innerHTML += `
+                    <div class="p-3 rounded-2xl border ${badge} bg-white flex flex-col space-y-1 shadow-2xs hover:shadow-xs transition">
+                        <div class="flex items-center justify-between text-[10px]">
+                            <span class="font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${badge}">${l.source}</span>
+                            <span class="text-slate-400 font-mono">${l.time}</span>
+                        </div>
+                        <p class="text-xs text-slate-700 leading-snug font-medium break-words pt-0.5">${l.message}</p>
+                    </div>
+                `;
+            });
+        }
+
+        function updatePodSelectOptions(pods) {
+            const select = document.getElementById('state-pod-select');
+            if (!select) return;
+            const currentVal = select.value;
+            select.innerHTML = '';
+            pods.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.name;
+                opt.innerText = `${p.name} (${p.app.toUpperCase()})`;
+                if (p.name === currentVal) opt.selected = true;
+                select.appendChild(opt);
+            });
+        }
+
+        function selectPodForInspection(podName) {
+            switchMainTab('state');
+            const select = document.getElementById('state-pod-select');
+            if (select) {
+                select.value = podName;
+                updateStateVectorView();
+            }
+        }
+
+        async function updateStateVectorView() {
+            const select = document.getElementById('state-pod-select');
+            if (!select) return;
+            const podName = select.value;
+            if (!podName || !currentState) return;
+
+            const table = document.getElementById('state-table');
+            table.innerHTML = '<div class="text-slate-400 text-center py-4 text-xs">Computing 7D suitability across worker nodes...</div>';
+
+            let html = '';
+            for (const node of currentState.nodes) {
+                const res = await fetch(`/api/state_vector?pod=${encodeURIComponent(podName)}&node=${encodeURIComponent(node.name)}`);
+                const data = await res.json();
+                const c = data.components;
+                const scoreColor = data.score > 70 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (data.score > 50 ? 'bg-brand-50 text-brand-primary border-brand-200' : 'bg-slate-50 text-slate-600 border-slate-200');
+
+                html += `
+                    <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-card space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <div>
+                                <h5 class="font-mono text-xs font-bold text-slate-800">${node.name}</h5>
+                                <span class="text-[10px] text-slate-400">${node.zone}</span>
+                            </div>
+                            <span class="px-3 py-1 rounded-full text-xs font-bold ${scoreColor} border">
+                                Suitability: ${data.score} / 100
+                            </span>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 font-mono text-[11px]">
+                            <div class="bg-slate-50 p-2 rounded-xl text-center">
+                                <span class="text-slate-400 text-[10px] block">cpu_eff</span>
+                                <strong class="text-slate-700">${c.cpu_eff}</strong>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded-xl text-center">
+                                <span class="text-slate-400 text-[10px] block">mem_eff</span>
+                                <strong class="text-slate-700">${c.mem_eff}</strong>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded-xl text-center">
+                                <span class="text-slate-400 text-[10px] block">node_cpu</span>
+                                <strong class="text-slate-700">${c.node_cpu}</strong>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded-xl text-center">
+                                <span class="text-slate-400 text-[10px] block">node_mem</span>
+                                <strong class="text-slate-700">${c.node_mem}</strong>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded-xl text-center">
+                                <span class="text-slate-400 text-[10px] block">disk_io</span>
+                                <strong class="text-slate-700">${c.disk_io}</strong>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded-xl text-center">
+                                <span class="text-slate-400 text-[10px] block">net_lat</span>
+                                <strong class="${c.net_lat > 0.4 ? 'text-rose-600 font-bold' : 'text-emerald-600'}">${c.net_lat}</strong>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded-xl text-center">
+                                <span class="text-slate-400 text-[10px] block">temp</span>
+                                <strong class="text-slate-700">${c.node_temp}</strong>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            table.innerHTML = html;
+        }
+
+        // Switch Top Main Tabs (Topology, Nodes, 7D State, Benchmark)
+        function switchMainTab(tab) {
+            currentMainTab = tab;
+            const tabs = ['topology', 'nodes', 'state', 'bench'];
+            tabs.forEach(t => {
+                const pill = document.getElementById(`pill-${t}`);
+                const view = document.getElementById(`view-${t}`);
+                if (t === tab) {
+                    pill.className = "px-3.5 py-1.5 rounded-full bg-slate-900 text-white shadow-xs transition font-semibold";
+                    view.classList.remove('hidden');
+                } else {
+                    pill.className = "px-3.5 py-1.5 rounded-full text-slate-600 hover:text-slate-900 transition font-semibold";
+                    view.classList.add('hidden');
+                }
+            });
+
+            if (tab === 'state') {
+                updateStateVectorView();
+            } else if (tab === 'bench' && !benchmarkChart) {
+                initBenchmarkChart();
+            }
+            lucide.createIcons();
+        }
+
+        // Switch Sidebar Action Tabs (Schedule Pod vs Descheduler)
+        function switchSidebarActionTab(actionTab) {
+            currentSidebarTab = actionTab;
+            const btnSched = document.getElementById('sidebar-tab-sched');
+            const btnDesched = document.getElementById('sidebar-tab-desched');
+            const pnlSched = document.getElementById('sidebar-panel-schedule');
+            const pnlDesched = document.getElementById('sidebar-panel-deschedule');
+
+            if (actionTab === 'schedule') {
+                btnSched.className = "flex-1 pb-3 text-xs font-bold text-brand-primary border-b-2 border-brand-primary transition";
+                btnDesched.className = "flex-1 pb-3 text-xs font-bold text-slate-400 hover:text-slate-600 border-b-2 border-transparent transition";
+                pnlSched.classList.remove('hidden');
+                pnlDesched.classList.add('hidden');
+            } else {
+                btnSched.className = "flex-1 pb-3 text-xs font-bold text-slate-400 hover:text-slate-600 border-b-2 border-transparent transition";
+                btnDesched.className = "flex-1 pb-3 text-xs font-bold text-brand-primary border-b-2 border-brand-primary transition";
+                pnlSched.classList.add('hidden');
+                pnlDesched.classList.remove('hidden');
+            }
+        }
+
+        // Mode Switch Handler
+        async function setClusterMode(mode) {
+            try {
+                const res = await fetch('/api/mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: mode })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(`Failed to connect to Live K8s cluster: ${data.error || 'Check kubeconfig or kind cluster status.'}`);
+                }
+                await fetchState();
+            } catch (err) {
+                console.error("Error setting cluster mode:", err);
+            }
+        }
+
+        // Action handlers
+        async function triggerDescheduleStep() {
+            try {
+                await fetch('/api/deschedule_step', { method: 'POST' });
+                await fetchState();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function toggleAutoDeschedule() {
+            try {
+                await fetch('/api/toggle_auto', { method: 'POST' });
+                await fetchState();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function injectSelectedDrift() {
+            const select = document.getElementById('drift-select');
+            const scenario = select.value;
+            if (!scenario) return;
+            try {
+                await fetch('/api/inject_drift', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scenario: scenario })
+                });
+                select.value = "";
+                await fetchState();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function resetCluster() {
+            if (!confirm("Reset cluster back to original baseline configuration?")) return;
+            try {
+                await fetch('/api/reset', { method: 'POST' });
+                await fetchState();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function submitSidebarSchedulePod() {
+            const app = document.getElementById('sched-app-select').value;
+            const cpu = parseFloat(document.getElementById('sched-cpu-input').value);
+            const mem = parseFloat(document.getElementById('sched-mem-input').value);
+
+            try {
+                await fetch('/api/schedule_pod', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ app: app, cpu: cpu, mem: mem })
+                });
+                await fetchState();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function scrollToSection(id) {
+            const el = document.getElementById(id);
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Benchmark Chart Initialization (Light styled Chart.js)
+        function initBenchmarkChart() {
+            const canvas = document.getElementById('benchmarkChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            benchmarkChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Default K8s', 'Marchese 2025', 'KubeAI 2026', 'Proposed Framework'],
+                    datasets: [
+                        {
+                            label: 'Inter-Pod Comm Latency (ms)',
+                            data: [4510, 4390, 3110, 2695],
+                            backgroundColor: 'rgba(99, 102, 241, 0.85)',
+                            borderColor: 'rgb(99, 102, 241)',
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Resource Variance (x1000)',
+                            data: [824, 385, 512, 298],
+                            backgroundColor: 'rgba(244, 63, 94, 0.75)',
+                            borderColor: 'rgb(244, 63, 94)',
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#475569',
+                                font: { family: 'Plus Jakarta Sans', size: 11, weight: '600' }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#64748b', font: { family: 'Plus Jakarta Sans', size: 10, weight: '600' } },
+                            grid: { color: '#f1f5f9' }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: { display: true, text: 'Comm Latency (ms)', color: '#6366f1', font: { size: 10 } },
+                            ticks: { color: '#6366f1' },
+                            grid: { color: '#f1f5f9' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: { display: true, text: 'Variance (x1000)', color: '#f43f5e', font: { size: 10 } },
+                            ticks: { color: '#f43f5e' },
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function triggerBenchmark() {
+            const btn = document.getElementById('run-bench-btn');
+            btn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i><span>Evaluating...</span>`;
+            lucide.createIcons();
+
+            try {
+                const res = await fetch('/api/run_benchmark', { method: 'POST' });
+                const data = await res.json();
+                renderBenchmarkResults(data.results);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                btn.innerHTML = `<i data-lucide="play-circle" class="w-4 h-4"></i><span>Run Live Benchmark</span>`;
+                lucide.createIcons();
+            }
+        }
+
+        function renderBenchmarkResults(results) {
+            if (!benchmarkChart) initBenchmarkChart();
+
+            const algorithms = Object.keys(results);
+            const latencies = algorithms.map(a => results[a].comm);
+            const variances = algorithms.map(a => results[a].var * 1000);
+
+            benchmarkChart.data.labels = algorithms;
+            benchmarkChart.data.datasets[0].data = latencies;
+            benchmarkChart.data.datasets[1].data = variances;
+            benchmarkChart.update();
+
+            const tbody = document.getElementById('benchmark-tbody');
+            tbody.innerHTML = '';
+            algorithms.forEach(a => {
+                const r = results[a];
+                const isProposed = a.includes('Proposed');
+                tbody.innerHTML += `
+                    <tr class="${isProposed ? 'bg-indigo-50/70 font-bold text-slate-900' : 'hover:bg-slate-50/50'}">
+                        <td class="p-3">${a}</td>
+                        <td class="p-3 ${isProposed ? 'text-brand-primary' : ''}">${r.comm} ms</td>
+                        <td class="p-3">${r.var}</td>
+                        <td class="p-3">${r.cost}</td>
+                        <td class="p-3 ${r.evictions > 10 ? 'text-rose-600' : 'text-slate-600'}">${r.evictions}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Start polling loop every 2.5s
+        fetchState();
+        setInterval(fetchState, 2500);
+    </script>
+</body>
+</html>

@@ -98,56 +98,105 @@ Evaluated across dynamic microservice workload shifts over identical random seed
 ├── tests/
 │   └── test_scheduler_descheduler.py    # Pytest unit & integration test suite
 ├── scripts/
+│   ├── run_dashboard.sh                 # Launch web visual interface
 │   └── run_demo.sh                      # One-click verification & demo script
 └── docs/
+    ├── SCHEDULER.md                     # Arc42 & C4 architecture: Scheduler Extender
+    ├── DESCHEDULER.md                   # Arc42 & C4 architecture: PPO Descheduler
     └── synopsis_ANUBHAV_references_fixed.pdf
 ```
 
 ---
 
-## 🚀 Quickstart
+## 🚀 Quickstart & How to Run
 
-### 1. Prerequisites
-- Linux with Python 3.11+ (Python 3.14 supported)
-- Docker & Kind (`kind`)
-- `kubectl`
+You can run this project in **two ways**:
+1. **Simulation / Benchmark Mode (No Kubernetes cluster needed)**: Trains the RL agent, evaluates the algorithms against baseline schedulers, and runs the interactive visual dashboard.
+2. **Live Kubernetes Cluster Mode (Kind cluster)**: Deploys the microservice application into a real multi-node Kind cluster and runs the live Scheduler Extender and continuous RL Descheduler daemon.
 
-### 2. Environment Setup
+---
+
+### What do the scripts do?
+
+| Script | Purpose | What it executes |
+| :--- | :--- | :--- |
+| **`scripts/run_demo.sh`** | **Automated end-to-end verification** | Runs test suite (`pytest`), ensures/trains the PPO RL model (`train.py`), executes comparative benchmarks (`evaluate.py`), and checks if a live cluster is reachable. *Note: It does not start persistent background servers (extender/dashboard).* |
+| **`scripts/run_dashboard.sh`** | **Visual Web Dashboard** | Starts the interactive web UI (`http://localhost:5000`) to visualize cluster nodes, traffic heatmaps, 7D state vector metrics, and step-by-step PPO descheduling actions. |
+| **`scripts/setup_cluster.sh`** | **Local Cluster Provisioning** | Creates a 3-worker local `kind` cluster named `rl-scheduler` and deploys the benchmark microservices. |
+
+---
+
+### Step 1: Environment Setup
+
+Ensure you have Python 3.11+ installed. Set up the virtual environment and install dependencies:
+
 ```bash
+# Create and activate virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt   # or torch, stable-baselines3, gymnasium, kubernetes, flask
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-### 3. Run Unit Tests
+---
+
+### Mode A: One-Click Quick Verification & Benchmark (Recommended First Step)
+
+To run the unit tests, verify or train the PPO model, and run the comparative benchmark across all 4 configurations in one command:
+
 ```bash
-source .venv/bin/activate
-PYTHONPATH=. pytest tests/
+./scripts/run_demo.sh
 ```
 
-### 4. Train the PPO Descheduler
+> **Is `run_demo.sh` doing all the work?**  
+> `run_demo.sh` runs the tests, RL training (if model is missing), and benchmark evaluation automatically. It gives you the full comparative metrics in the terminal. However, it terminates once complete. To launch the interactive dashboard or run against a real cluster, follow Mode B or Mode C below.
+
+---
+
+### Mode B: Launch the Interactive Visual Dashboard
+
+To explore pod placements, inspect the 7D state vector, and step through PPO decisions visually in your web browser:
+
 ```bash
-source .venv/bin/activate
-PYTHONPATH=. python3 src/rl/train.py
+./scripts/run_dashboard.sh
 ```
+Then open **http://localhost:5000** in your browser.
 
-### 5. Run the Comparative Benchmark
-```bash
-source .venv/bin/activate
-PYTHONPATH=. python3 src/rl/evaluate.py
-```
+*(Alternatively: `source .venv/bin/activate && PYTHONPATH=. python3 src/dashboard/app.py`)*
 
-### 6. Run Against Live Kubernetes Cluster
-```bash
-# Deploy benchmark microservices
-kubectl apply -f manifests/benchmark/microservice_app.yaml
+---
 
-# Start Scheduler Extender
-PYTHONPATH=. python3 src/scheduler/extender_server.py &
+### Mode C: Run with a Live Kubernetes Cluster (Kind)
 
-# Run Descheduler Controller
-PYTHONPATH=. python3 src/descheduler/controller.py
-```
+To run the custom scheduler extender and continuous descheduler against a real multi-node cluster:
+
+1. **Create the Kind cluster and deploy benchmark pods:**
+   ```bash
+   ./scripts/setup_cluster.sh
+   ```
+   *(Or manually: `kind create cluster --name rl-scheduler --config manifests/kind/kind-config.yaml` followed by `kubectl apply -f manifests/benchmark/microservice_app.yaml`)*
+
+2. **Start the Scheduler Extender (HTTP Service on port 8888):**
+   In terminal 1:
+   ```bash
+   source .venv/bin/activate
+   export PYTHONPATH=.
+   python3 src/scheduler/extender_server.py
+   ```
+
+3. **Start the Continuous RL Descheduler Controller:**
+   In terminal 2:
+   ```bash
+   source .venv/bin/activate
+   export PYTHONPATH=.
+   python3 src/descheduler/controller.py
+   ```
+
+4. **Monitor cluster activity:**
+   ```bash
+   kubectl get pods -n benchmark -o wide --watch
+   ```
 
 ---
 

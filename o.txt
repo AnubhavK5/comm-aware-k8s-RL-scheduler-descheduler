@@ -1,0 +1,65 @@
+Your engineering scaffolding is good (clean structure, safety guards, tests, docs), but the paper’s central claims aren’t supported by the code yet. This is fixable, and it’s far better to find it now than in review or a viva.
+
+The Untitled_Document with your agy chats was 0 bytes, so I couldn’t read it. I read all ~2,100 lines of code and ran it. Everything below is measured, and the scripts to reproduce it are attached (audit_ppo.py, audit_controls.py).
+
+What I found
+
+1. Your headline benchmark never uses the PPO model. I ran evaluate.py with the model unable to load and got your README table to four decimals. The “Proposed” row is an exhaustive greedy search over every (pod, node) pair, scored by the same cost function used for evaluation. ppo_model is loaded and never touched. The live controller has the same issue (rl_policy=None, never read), and the dashboard’s “PPO step” is also greedy.
+
+2. The trained PPO learned almost nothing. Tested in your own environment over 300 episodes:
+
+Policy	Final cost (lower is better)	Evictions per episode
+Do nothing	27.52	0
+PPO (deterministic)	27.47	0.1 (picks no-op 99.6% of the time)
+PPO (sampled)	16.76	30
+Random eviction	16.06	37
+Greedy rule	15.63	4.7
+
+PPO’s gain over doing nothing is +0.045 ± 0.046, which is zero. Your own training log shows the same thing: evaluation reward −22.4 is exactly the no-op reward. Policy entropy only fell from 2.55 to 2.32 (the maximum is 2.565), and the critic’s explained variance stayed near 0 the whole run.
+
+Two design flaws cause this:
+
+The agent can’t see the communication graph. The 42-dim observation has no communication data, yet half the reward depends on it. It can’t be communication-aware by construction.
+env.step() secretly picks the best destination. The agent only chooses which pod to evict, so even random eviction nearly matches greedy. There’s almost nothing left for RL to learn except churn.
+
+3. The benchmark is circular and the baselines are weak.
+
+The “KubeAI” baseline is a perfect-information placement, not KubeAI. A control with one extra placement sweep and no descheduler recovers about half the KubeAI-to-Proposed gap (18.66 → 17.19, versus 15.58 for Proposed). With no drift at all, the extra sweep matches Proposed (15.74 vs 15.71).
+The “Load-Aware” baseline evicts on 32 of 40 steps with no gain check, while the real one only evicts when it improves the score. It also gets a communication-aware destination from env.step(), so it isn’t communication-blind. The “92.5% fewer evictions” is against a strawman.
+The drift is only CPU. The communication graph never changes, so your core thesis is never tested.
+“Comm latency (ms)” is calls × assumed constants, not milliseconds.
+
+4. The live-cluster path doesn’t work as described yet.
+
+Nothing ever feeds the communication graph. There’s no OpenTelemetry code, and the descheduler builds its own empty graph.
+compute_cluster_objective ignores hypothetical moves, so the resource term never changes between candidates.
+disk_io and node_temp are hard-coded constants.
+Nothing in the setup scripts wires the extender into kube-scheduler.
+The scorer would feed a 7-dim vector to a 42-dim model.
+There’s no recorded live run anywhere.
+
+One good result: when I let the communication graph drift mid-run, comm-aware greedy rescheduling got cost 17.5 versus 26.9 for static placement, about 35% lower. That’s the experiment your thesis needs, and it isn’t in your benchmark yet. It still assumes perfect, instant knowledge of the graph, so it needs noisy telemetry to be convincing.
+
+What remains before a paper
+This week: stop quoting the README numbers (40.5%, 64.5%, 92.5%) and tell your mentor you found the benchmark doesn’t test the RL model and you’re restructuring. Mentors respect that far more than discovering it later.
+Choose the contribution honestly.
+Core (safe): a communication-aware greedy descheduler with safety guards, evaluated on a real cluster. Call it that.
+Stretch: RL, earned properly. Put the communication data in the observation, remove the oracle destination (or make the action pod + node), randomize communication drift during training, and compare against the greedy rule with the same information. Report ≥5 training seeds. Even “RL matches greedy with fewer evictions” is publishable if reported honestly.
+Make the live system real. Feed the graph from real telemetry (a service mesh, or app request counters labeled by peer, or μBench from Paper 2). Wire the extender into Kind. Add tc netem latency between node containers, since Kind nodes share a host and cross-node latency is ~0. Fix the objective so it responds to hypothetical moves.
+Fair baselines: default scheduler, a faithful Load-Aware descheduler (Paper 2, Eq. 7–9), a KubeAI-style scheduler (say “style”, since you can’t reproduce their model), your method, and ablations (communication off, descheduler off).
+Real measurements: p95 response time with k6, over ≥5 trials of ~20 minutes as Paper 2 did, plus evictions and errors during eviction. Report means with confidence intervals.
+Add a guard test that fails if the trained model isn’t used in the evaluation, so this can’t happen silently again.
+
+For your own checking, keep a table of claim → experiment → file and line that produces the evidence. This is the failure I warned about earlier: the environment, reward, and evaluation are research decisions, and the CLI agent made them for you. Use it for plumbing, but you should be able to defend every design choice yourself.
+
+If you’d like, I can design the redesigned environment next (observation, action, reward with disruption cost, and a drift schedule).
+
+I put the audit scripts in the audit/ folder, and README.txt there has the run commands.
+
+Audit ppo
+Code
+·PY
+Audit controls
+Code
+·PY
+Np policy
