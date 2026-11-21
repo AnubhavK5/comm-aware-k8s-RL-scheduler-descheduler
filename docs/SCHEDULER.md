@@ -51,7 +51,7 @@ flowchart TD
 2. **7D State Feature Extraction**: For each candidate node, construct a feature vector:
    $$s = [cpu\_eff, mem\_eff, node\_cpu, node\_mem, disk\_io, net\_lat, node\_temp]$$
 3. **Composite Scoring**: Combine normalized resource balance scores and communication affinity scores into an integer score in the range `[0, 100]`.
-4. **Policy-Driven / Heuristic Hybrid**: Utilize a pre-trained Reinforcement Learning policy when available, with automatic deterministic heuristic fallback.
+4. **Deterministic Heuristic Scoring (RL Path Unverified)**: Uses a deterministic weighted heuristic scoring function. Note: As documented in `CLAIMS.md` and Rule 4.10, the RL policy scoring path (`predict()`) is currently unverified due to Defect D5 (feeding a 7D vector into a 42D model) and must NOT silently fall back to heuristic while claiming RL inference.
 
 ---
 

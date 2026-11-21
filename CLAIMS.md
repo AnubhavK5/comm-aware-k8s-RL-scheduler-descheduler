@@ -16,7 +16,7 @@ This document tracks every claim made in the README, synopsis, and paper. No cla
 | **Outperforms KubeAI / Load-Aware** | Not supported | "Outperforms KubeAI-style / Load-Aware-style baselines in simulated cost" (once C1/C2 exist) | Multi-trial live experiments in Phase 4 | Phase 4 (G4) |
 | **Uses OpenTelemetry** | Not implemented | None yet (planned for Phase 2) | Non-empty live telemetry graph fed from OTel traces | Gate G2 |
 | **Uses disk I/O and node temperature** | Not implemented | None (unmeasurable in Kind without host sensors; remove from claims) | None (feature deleted from state vector) | Task T2.3 |
-| **Safety guards (replicas >= 2, cooldown, namespace)** | Code exists | "Implemented in controller; tested in unit test suite" | Live eviction log demonstrating safety enforcement | Phase 3 (T3.3) |
+| **Safety guards (replicas >= 2, cooldown, namespace)** | Implemented, untested | "Implemented in controller code; live enforcement untested" | Live eviction log demonstrating safety enforcement | Phase 3 (T3.3) |
 | **Extender integrated with kube-scheduler** | Endpoints exist | "Extender service implemented; kube-scheduler wiring unverified" | Kube-scheduler control-plane log showing HTTP call to extender | Phase 3 (T3.1) |
 
 ---

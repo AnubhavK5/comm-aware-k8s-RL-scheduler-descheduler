@@ -2,15 +2,33 @@
 
 import logging
 import numpy as np
-from typing import Dict, List, Tuple
-from stable_baselines3 import PPO
+from typing import Dict, List, Tuple, Any, Optional
+try:
+    from stable_baselines3 import PPO
+except ImportError:
+    PPO = None
 
 from src.rl.env.cluster_env import K8sClusterEnv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("Evaluator")
 
-def run_simulation_benchmark(episodes: int = 50) -> Dict[str, Dict[str, Any]]:
+class ModelCountingProxy:
+    """Wraps an RL policy model and counts calls to predict()."""
+    def __init__(self, model):
+        self._model = model
+        self.call_count = 0
+
+    def predict(self, *args, **kwargs):
+        self.call_count += 1
+        if self._model is not None:
+            return self._model.predict(*args, **kwargs)
+        raise RuntimeError("Predict called on None model proxy")
+
+    def __getattr__(self, name):
+        return getattr(self._model, name)
+
+def run_simulation_benchmark(episodes: int = 50, model_override: Optional[Any] = None) -> Dict[str, Dict[str, Any]]:
     """
     Evaluates 4 configurations in an analytical simulation environment:
     1. Default Kubernetes Scheduler (static placement, no descheduling)
@@ -21,18 +39,26 @@ def run_simulation_benchmark(episodes: int = 50) -> Dict[str, Dict[str, Any]]:
     env = K8sClusterEnv(num_nodes=3, num_pods=12, max_steps=40)
     model_path = "src/rl/models/ppo_descheduler.zip"
 
-    try:
-        ppo_model = PPO.load(model_path, env=env)
-        logger.info(f"Loaded trained PPO model from {model_path}")
-    except Exception as e:
-        logger.warning(f"Could not load PPO model ({e})")
-        ppo_model = None
+    if model_override is not None:
+        raw_model = model_override
+    elif PPO is not None:
+        try:
+            raw_model = PPO.load(model_path, env=env)
+            logger.info(f"Loaded trained PPO model from {model_path}")
+        except Exception as e:
+            logger.warning(f"Could not load PPO model ({e})")
+            raw_model = None
+    else:
+        logger.warning("stable_baselines3 not installed; PPO model loading skipped.")
+        raw_model = None
+
+    proxy_model = ModelCountingProxy(raw_model)
 
     results = {
-        "Default Scheduler": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "calls_model_predict": False},
-        "Load-Aware-style (Heuristic)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "calls_model_predict": False},
-        "KubeAI-style (oracle placement, simulator)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "calls_model_predict": False},
-        "Proposed Greedy Heuristic (Sched+Desched)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "calls_model_predict": False},
+        "Default Scheduler": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "uses_model": False, "calls_model_predict": False, "model_call_count": 0},
+        "Load-Aware-style (Heuristic)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "uses_model": False, "calls_model_predict": False, "model_call_count": 0},
+        "Static-Oracle (Placement-Only Heuristic)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "uses_model": False, "calls_model_predict": False, "model_call_count": 0},
+        "Proposed Greedy Heuristic (Sched+Desched)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "uses_model": False, "calls_model_predict": False, "model_call_count": 0},
     }
 
     for ep in range(episodes):
@@ -95,10 +121,10 @@ def run_simulation_benchmark(episodes: int = 50) -> Dict[str, Dict[str, Any]]:
             if term or trunc:
                 break
         res_var, comm_cost, comb = env._compute_cost(env.pod_nodes)
-        results["KubeAI-style (oracle placement, simulator)"]["res_variance"].append(res_var)
-        results["KubeAI-style (oracle placement, simulator)"]["comm_latency"].append(comm_cost)
-        results["KubeAI-style (oracle placement, simulator)"]["combined_cost"].append(comb)
-        results["KubeAI-style (oracle placement, simulator)"]["evictions"].append(0)
+        results["Static-Oracle (Placement-Only Heuristic)"]["res_variance"].append(res_var)
+        results["Static-Oracle (Placement-Only Heuristic)"]["comm_latency"].append(comm_cost)
+        results["Static-Oracle (Placement-Only Heuristic)"]["combined_cost"].append(comb)
+        results["Static-Oracle (Placement-Only Heuristic)"]["evictions"].append(0)
 
         # --- 4. Proposed Greedy Heuristic (Comm-Aware Sched + Desched) ---
         obs, _ = env.reset(seed=seed)
@@ -153,6 +179,15 @@ def run_simulation_benchmark(episodes: int = 50) -> Dict[str, Dict[str, Any]]:
         results["Proposed Greedy Heuristic (Sched+Desched)"]["comm_latency"].append(comm_cost)
         results["Proposed Greedy Heuristic (Sched+Desched)"]["combined_cost"].append(comb)
         results["Proposed Greedy Heuristic (Sched+Desched)"]["evictions"].append(evictions)
+
+    # Set calls_model_predict and model_call_count dynamically from the counting proxy
+    for cfg_name, cfg_data in results.items():
+        if cfg_data.get("uses_model", False):
+            cfg_data["model_call_count"] = proxy_model.call_count
+            cfg_data["calls_model_predict"] = proxy_model.call_count > 0
+        else:
+            cfg_data["model_call_count"] = 0
+            cfg_data["calls_model_predict"] = False
 
     print("\n" + "="*88)
     print(f"{'Configuration':<45} | {'Resource Var':<12} | {'Comm Cost':<12} | {'Total Cost':<10} | {'Evictions':<9}")

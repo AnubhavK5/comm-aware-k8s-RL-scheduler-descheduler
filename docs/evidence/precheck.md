@@ -1,6 +1,6 @@
-# Phase 0 System & Environment Precheck (T0.6)
+# Phase 0 System & Environment Precheck (T0.6 & T0.9)
 
-Recorded At: 2026-11-20T16:08:00+05:30  
+Recorded At: 2026-11-20T16:08:00+05:30 (Updated in T0.9)  
 Host Environment: Linux (Arch / CachyOS)  
 Kernel: `7.2.9-2-cachyos #1 SMP PREEMPT_DYNAMIC` x86_64  
 
@@ -47,9 +47,9 @@ Kernel: `7.2.9-2-cachyos #1 SMP PREEMPT_DYNAMIC` x86_64
 - **Official Repository:** `mSvcBench/muBench` (Detti, Funari, Petrucci, IEEE TPDS 2023).
 - **Workload Model:** Uses configurable "Loader functions" simulating configurable CPU computation ($\pi$ calculation), memory allocations, disk I/O operations, and network payload bytes forwarded over HTTP/gRPC.
 - **Built-in Telemetry Support:**
-  - **Prometheus:** Natively integrated into the μBench reference stack. Microservices expose Prometheus endpoints or are scraped via Prometheus/Grafana/CAdvisor.
-  - **Jaeger / Istio:** μBench documentation provides reference configurations for Jaeger tracing and Istio service mesh.
-  - **OpenTelemetry:** Native OpenTelemetry auto-instrumentation is not bundled by default inside the bare μBench python containers, but can be added via the OpenTelemetry Python automatic instrumentation agent (`opentelemetry-instrument`) or an OpenTelemetry Collector scraping Prometheus metrics.
+  - **Prometheus:** Natively integrated into the μBench reference stack `[WEB, unverified]`. Microservices expose Prometheus endpoints or are scraped via Prometheus/Grafana/CAdvisor. Note: As verified in Marchese & Tomarchio 2025, standard CAdvisor Prometheus scraping measures individual pod/node resource usage, **not pairwise request counts**.
+  - **Jaeger / Istio:** μBench documentation provides reference configurations for Jaeger tracing and Istio service mesh `[WEB, unverified]`.
+  - **OpenTelemetry:** Native OpenTelemetry auto-instrumentation is not bundled by default inside bare μBench containers, but can be added via the OpenTelemetry Python automatic instrumentation agent (`opentelemetry-instrument`) or an OpenTelemetry Collector scraping Prometheus metrics `[WEB, unverified]`.
 
 ---
 

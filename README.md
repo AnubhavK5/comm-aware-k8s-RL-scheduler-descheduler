@@ -17,7 +17,7 @@ This project implements the architecture proposed in the research synopsis:
 3. **Load-Aware Descheduler (Marchese & Tomarchio, 2025)**: Periodically reschedules running pods based on real-time node telemetry, but uses a **fixed non-adaptive formula** with zero visibility into inter-pod network communications.
 4. **Our Solution**: Unifies both paradigms into an end-to-end framework:
    - A **Scheduler Extender** (`src/scheduler/`) for communication-aware initial placement.
-   - A **Continuous RL Descheduler** (`src/descheduler/`) driven by PPO to continuously evict and relocate pods that drift into high-latency cross-node configurations, while preserving replica availability.
+   - A **Continuous Descheduler** (`src/descheduler/`) implementing communication-aware eviction heuristics (with a planned PPO RL stretch policy in Phase 5) to periodically evict and relocate pods that drift into high-latency cross-node configurations, while preserving replica availability.
 
 ---
 
@@ -34,7 +34,7 @@ This project implements the architecture proposed in the research synopsis:
                                     +------------|-----------------------------+
                                                  v
 +-------------------------------+   +------------+------------+   +-------------------------------+
-|  Telemetry Aggregator         |   | Scheduler Extender      |   | PPO RL Descheduler            |
+|  Telemetry Aggregator         |   | Scheduler Extender      |   | Heuristic Descheduler         |
 |  - Metrics Server (CPU/Mem)   +-->+ - Flask HTTP Service    |   | - Periodic evaluation loop    |
 |  - Node resource utilization  |   | - 7D State Scorer       |   | - Safety & replica guards     |
 |  - Inter-pod Comm Graph       |   | - Action-Value Ranking  |   | - Eviction subresource API    |
@@ -113,8 +113,8 @@ Evaluated across dynamic microservice workload shifts in the simulator over iden
 ## 🚀 Quickstart & How to Run
 
 You can run this project in **two ways**:
-1. **Simulation / Benchmark Mode (No Kubernetes cluster needed)**: Trains the RL agent, evaluates the algorithms against baseline schedulers, and runs the interactive visual dashboard.
-2. **Live Kubernetes Cluster Mode (Kind cluster)**: Deploys the microservice application into a real multi-node Kind cluster and runs the live Scheduler Extender and continuous RL Descheduler daemon.
+1. **Simulation / Benchmark Mode (No Kubernetes cluster needed)**: Evaluates scheduling and descheduling algorithms in an offline analytical simulator across baseline schedulers and runs the interactive visual dashboard.
+2. **Live Kubernetes Cluster Mode (Kind cluster)**: Deploys the microservice application into a real multi-node Kind cluster and runs the live Scheduler Extender and continuous Descheduler daemon.
 
 ---
 
@@ -187,7 +187,7 @@ To run the custom scheduler extender and continuous descheduler against a real m
    python3 src/scheduler/extender_server.py
    ```
 
-3. **Start the Continuous RL Descheduler Controller:**
+3. **Start the Continuous Descheduler Controller:**
    In terminal 2:
    ```bash
    source .venv/bin/activate
