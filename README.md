@@ -104,7 +104,7 @@ Evaluated across dynamic microservice workload shifts in the simulator over iden
 │   └── run_demo.sh                      # One-click verification & demo script
 └── docs/
     ├── SCHEDULER.md                     # Arc42 & C4 architecture: Scheduler Extender
-    ├── DESCHEDULER.md                   # Arc42 & C4 architecture: PPO Descheduler
+    ├── DESCHEDULER.md                   # Arc42 & C4 architecture: Continuous Descheduler (greedy heuristic; PPO planned Phase 5)
     └── synopsis_ANUBHAV_references_fixed.pdf
 ```
 
@@ -122,8 +122,8 @@ You can run this project in **two ways**:
 
 | Script | Purpose | What it executes |
 | :--- | :--- | :--- |
-| **`scripts/run_demo.sh`** | **Automated end-to-end verification** | Runs test suite (`pytest`), ensures/trains the PPO RL model (`train.py`), executes comparative benchmarks (`evaluate.py`), and checks if a live cluster is reachable. *Note: It does not start persistent background servers (extender/dashboard).* |
-| **`scripts/run_dashboard.sh`** | **Visual Web Dashboard** | Starts the interactive web UI (`http://localhost:5000`) to visualize cluster nodes, traffic heatmaps, 7D state vector metrics, and step-by-step PPO descheduling actions. |
+| **`scripts/run_demo.sh`** | **Automated end-to-end verification** | Runs test suite (`pytest`), trains the RL model if missing (`train.py`), executes comparative benchmarks (`evaluate.py`), and checks if a live cluster is reachable. *Note: benchmarks use a greedy heuristic, NOT the PPO model. See `CLAIMS.md`.* |
+| **`scripts/run_dashboard.sh`** | **Visual Web Dashboard** | Starts the interactive web UI (`http://localhost:5000`) to visualize cluster nodes, traffic heatmaps, and 7D state vector metrics. *PPO step-through is a Phase 5 feature; current view shows greedy heuristic decisions.* |
 | **`scripts/setup_cluster.sh`** | **Local Cluster Provisioning** | Creates a 3-worker local `kind` cluster named `rl-scheduler` and deploys the benchmark microservices. |
 
 ---
@@ -158,7 +158,7 @@ To run the unit tests, verify or train the PPO model, and run the comparative be
 
 ### Mode B: Launch the Interactive Visual Dashboard
 
-To explore pod placements, inspect the 7D state vector, and step through PPO decisions visually in your web browser:
+To explore pod placements, inspect the 7D state vector, and visualize current heuristic descheduler decisions in your web browser:
 
 ```bash
 ./scripts/run_dashboard.sh

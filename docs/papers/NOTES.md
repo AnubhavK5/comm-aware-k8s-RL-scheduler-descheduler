@@ -3,7 +3,7 @@
 Project: Communication-aware pod scheduling and rescheduling for Kubernetes  
 Owner: Anubhav Kumar (GE-230211124) | Supervisor: Prof. (Dr.) Durgaprasad Gangodkar  
 
-This document records the exact experimental setups, methodologies, equations, and evaluation details verified from the source paper PDFs. Every statement is backed by an exact section or page citation. Unverified external assertions are explicitly marked `[WEB, unverified]`.
+This document records the exact experimental setups, methodologies, equations, and evaluation details verified from the source paper PDFs. Every statement is backed by an exact section or page citation (e.g., "p. 7", "pp. 11–13"). Unverified external assertions — including anything sourced from GitHub READMEs, blog posts, or web searches — are explicitly marked `[WEB, unverified]`.
 
 ---
 
@@ -28,6 +28,8 @@ This document records the exact experimental setups, methodologies, equations, a
   - **Eviction Decision (p. 9, Eqs. 7–9):**
     $$dscore(p) = \max_{n_j \in cns}(score(p, n_j)) - score(p, n_i)$$
     Evicts the pod with $\max(dscore(p))$ provided $dscore(p) > 0$. Pods are **only** evicted when there is a strictly positive improvement.
+- **Related Work (pp. 11–13):**
+  - Survey of related schedulers; reference list on pp. 14–15.
 - **Workload & Benchmark (pp. 9–10):**
   - Generates microservice topologies using **μBench** (Ref [13], Detti et al., IEEE TPDS 2023).
   - Uses the μBench **Loader function** to generate configurable CPU ($\pi$ decimals), memory, network bandwidth (bytes/req), and disk I/O.
@@ -35,6 +37,8 @@ This document records the exact experimental setups, methodologies, equations, a
   - 1 master + 6 worker nodes on **RKE2** (Proxmox VMs, each 2 vCPU, 8GB RAM).
   - Load driven by **k6** sending HTTP requests to the API gateway.
   - 5 trials per experiment, 20 minutes per trial. Measures client-side **p95 response time** across concurrent virtual users.
+- **Integration Note (p. 13):**
+  - Marchese & Tomarchio explicitly acknowledge: "The proposed framework complements network-aware schedulers [26][27]; both can be integrated." (p. 13)
 - **Limitation / Research Gap identified in our project:**
   - Marchese & Tomarchio's framework is **communication-blind**. It monitors network bandwidth consumption (MB/s), but has zero visibility into pairwise inter-service call graphs, request counts, or cross-node RTT dependencies.
 
@@ -54,11 +58,12 @@ This document records the exact experimental setups, methodologies, equations, a
 - **State Vector & Telemetry Formulation (p. 80271, Eq. 1):**
   - The 7-dimensional state vector $s$ evaluated by KubeAI is:
     $$s = [cpu\_eff, mem\_eff, node\_cpu, node\_mem, disk\_io, net\_lat, node\_temp]^T$$
-  - **Crucial Clarification on State Features:** The 7-dimensional state vector contains **no pairwise communication features**. `cpu_eff` and `mem_eff` reflect pod resource allocation efficiency; `node_cpu`, `node_mem`, `disk_io`, `net_lat`, and `node_temp` reflect the candidate node's operational state. `net_lat` is measured round-trip ping latency to the node, **not** an inter-pod communication graph or service affinity score.
+  - **Crucial Clarification on State Features:** The 7-dimensional state vector contains **no pairwise communication features**. `cpu_eff` and `mem_eff` reflect pod resource allocation efficiency; `node_cpu`, `node_mem`, `disk_io` reflect the candidate node's operational state. `net_lat` is a **node-level latency metric** (the paper does not specify measurement method; "round-trip ping" is not stated in the PDF) `[p. 80271]`. `node_temp` is the node temperature sensor reading.
 - **Reward Function (p. 80271, Eqs. 2–9):**
   - $R = 2 \cdot r_{cpu} + 2 \cdot r_{mem} + p_{overload} + p_{balance} + p_{disk} + p_{net} + p_{temp}$.
 - **Evaluation & Metrics (pp. 80274–80275):**
   - Tested on a Kind cluster. Evaluated Pod Scheduling Latency (PSL), Resource Utilization Efficiency (RUE), and Failure Rate Reduction (FRR).
+  - **Synthetic workload (p. 80274):** KubeAI generated 15,000 scheduling events using a custom event simulator — no named benchmark (not uBench, not k6). `[p. 80274]`
 - **Limitation / Research Gap identified in our project:**
   - KubeAI is strictly an **initial placement scheduler**. It has no continuous descheduler to correct placement when workloads drift over time.
 
@@ -70,9 +75,9 @@ This document records the exact experimental setups, methodologies, equations, a
 **Citation:** Ref [10] in our synopsis / Ref [13] in Marchese & Tomarchio.
 
 ### Key Capabilities:
-- Generates reproducible, synthetic, multi-tier microservice applications configured via JSON/YAML.
-- Emits HTTP/gRPC traffic with configurable call chains, CPU calculations, memory usage, and payload sizes.
-- Natively supports Prometheus metric scraping and Jaeger tracing `[WEB, unverified: see muBench GitHub docs]`.
+- Generates reproducible, synthetic, multi-tier microservice applications configured via JSON/YAML. `[WEB, unverified: μBench GitHub README]`
+- Emits HTTP/gRPC traffic with configurable call chains, CPU calculations, memory usage, and payload sizes. `[WEB, unverified: μBench GitHub README]`
+- Natively supports Prometheus metric scraping and Jaeger tracing `[WEB, unverified: μBench GitHub docs]`.
 
 ---
 
@@ -83,7 +88,7 @@ This document records the exact experimental setups, methodologies, equations, a
 
 ### Key Survey Insights:
 - Analyzes custom scheduler architectures: Custom Schedulers, Scheduler Extenders, and Scheduling Framework Plugins.
-- Note on Scheduler Extenders: Extenders communicate with `kube-scheduler` via HTTP JSON webhooks, which introduces serialization and network latency overhead compared to in-tree Go plugins `[p. 15]`. *(Note: The previously stated "10–30ms" claim was an unverified web estimate and has been removed).*
+- Note on Scheduler Extenders: Extenders communicate with `kube-scheduler` via HTTP JSON webhooks, which introduces serialization and network latency overhead compared to in-tree Go plugins `[WEB, unverified: no PDF available; claim not verified from source text]`. *(Note: The previously stated "10–30ms" claim was an unverified web estimate and has been removed.)*
 
 ---
 

@@ -1,13 +1,15 @@
-# Arc42 Architecture & Implementation: PPO Continuous Descheduler
+# Arc42 Architecture & Implementation: Continuous Descheduler
 
-This document provides a comprehensive architecture and implementation specification for the **Communication-Aware PPO Continuous Descheduler** (`src/descheduler/`), structured according to the **Arc42 architectural template** and visualised using the **C4 model** (Context, Containers, Components) via Mermaid diagrams.
+This document provides a comprehensive architecture and implementation specification for the **Communication-Aware Continuous Descheduler** (`src/descheduler/`), structured according to the **Arc42 architectural template** and visualised using the **C4 model** (Context, Containers, Components) via Mermaid diagrams.
+
+> **Status:** The descheduler currently implements a **greedy heuristic exhaustive search** (Phase 0–4). A PPO RL policy is planned as a Phase 5 stretch goal (see `CLAIMS.md`). No PPO model is used in any current benchmark.
 
 ---
 
 ## 1. Introduction and Goals
 
 ### 1.1 Purpose
-While the Scheduler Extender ensures optimal initial placement, Kubernetes cluster workloads drift over time due to bursty inter-service traffic, pod scaling, node resource saturation, and hardware variance. The **Continuous Descheduler** periodically audits running pods, calculates cluster-wide communication and resource variance penalties, evaluates candidate migrations using a Proximal Policy Optimization (PPO) agent, and safely evicts victim pods via the Kubernetes Eviction Subresource API so that `kube-scheduler` can re-place them into optimal configurations.
+While the Scheduler Extender ensures optimal initial placement, Kubernetes cluster workloads drift over time due to bursty inter-service traffic, pod scaling, node resource saturation, and hardware variance. The **Continuous Descheduler** periodically audits running pods, calculates cluster-wide communication and resource variance penalties, evaluates candidate migrations using an **exhaustive greedy heuristic** (with a planned PPO RL stretch policy in Phase 5), and safely evicts victim pods via the Kubernetes Eviction Subresource API so that `kube-scheduler` can re-place them into optimal configurations.
 
 ### 1.2 Quality Goals
 1. **Flapping & Churn Suppression**: Limit evictions per evaluation cycle and enforce deployment-level cooldowns to prevent thrashing.

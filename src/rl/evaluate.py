@@ -52,13 +52,29 @@ def run_simulation_benchmark(episodes: int = 50, model_override: Optional[Any] =
         logger.warning("stable_baselines3 not installed; PPO model loading skipped.")
         raw_model = None
 
-    proxy_model = ModelCountingProxy(raw_model)
-
+    # One ModelCountingProxy PER CONFIG so counters don't bleed across configs.
+    # Each config carries its own proxy reference in "_proxy".
     results = {
-        "Default Scheduler": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "uses_model": False, "calls_model_predict": False, "model_call_count": 0},
-        "Load-Aware-style (Heuristic)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "uses_model": False, "calls_model_predict": False, "model_call_count": 0},
-        "Static-Oracle (Placement-Only Heuristic)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "uses_model": False, "calls_model_predict": False, "model_call_count": 0},
-        "Proposed Greedy Heuristic (Sched+Desched)": {"res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [], "uses_model": False, "calls_model_predict": False, "model_call_count": 0},
+        "Default Scheduler": {
+            "res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [],
+            "uses_model": False, "calls_model_predict": False, "model_call_count": 0,
+            "_proxy": ModelCountingProxy(raw_model),
+        },
+        "Load-Aware-style (Heuristic)": {
+            "res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [],
+            "uses_model": False, "calls_model_predict": False, "model_call_count": 0,
+            "_proxy": ModelCountingProxy(raw_model),
+        },
+        "Static-Oracle (Placement-Only Heuristic)": {
+            "res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [],
+            "uses_model": False, "calls_model_predict": False, "model_call_count": 0,
+            "_proxy": ModelCountingProxy(raw_model),
+        },
+        "Proposed Greedy Heuristic (Sched+Desched)": {
+            "res_variance": [], "comm_latency": [], "combined_cost": [], "evictions": [],
+            "uses_model": False, "calls_model_predict": False, "model_call_count": 0,
+            "_proxy": ModelCountingProxy(raw_model),
+        },
     }
 
     for ep in range(episodes):
@@ -180,11 +196,12 @@ def run_simulation_benchmark(episodes: int = 50, model_override: Optional[Any] =
         results["Proposed Greedy Heuristic (Sched+Desched)"]["combined_cost"].append(comb)
         results["Proposed Greedy Heuristic (Sched+Desched)"]["evictions"].append(evictions)
 
-    # Set calls_model_predict and model_call_count dynamically from the counting proxy
+    # Set calls_model_predict and model_call_count from each config's OWN proxy.
     for cfg_name, cfg_data in results.items():
+        proxy = cfg_data.pop("_proxy")  # remove internal key before returning
         if cfg_data.get("uses_model", False):
-            cfg_data["model_call_count"] = proxy_model.call_count
-            cfg_data["calls_model_predict"] = proxy_model.call_count > 0
+            cfg_data["model_call_count"] = proxy.call_count
+            cfg_data["calls_model_predict"] = proxy.call_count > 0
         else:
             cfg_data["model_call_count"] = 0
             cfg_data["calls_model_predict"] = False

@@ -40,3 +40,24 @@ This log records major design choices, alternatives considered, justifications, 
 ### DEC-006: Extender Bootstrapping & Scheduling Deadlock Prevention (T3.1)
 - **Context:** If `kube-scheduler` starts before the extender is healthy, it could block scheduling of all pods (including the extender itself if run in-cluster).
 - **Constraint:** Extender policy must specify `ignorable: true` during bootstrapping so core cluster services schedule cleanly.
+
+---
+
+## 2. Owner Decisions
+
+### DEC-007: Workload for T1.3 — μBench (Owner Decision, 2026-11-22)
+- **Decision:** Use **μBench** (Detti et al., IEEE TPDS 2023) as the microservice workload for T1.3 and all subsequent live experiments.
+- **Rationale:** Matches the benchmark used by Marchese & Tomarchio 2025 (the primary paper this project extends), enabling a reproducible comparison. μBench generates configurable CPU, memory, network bandwidth, and disk I/O load via a JSON/YAML topology.
+- **Status:** Owner confirmed. T1.3 not yet started (pending T1.2 completion and rtt.csv review).
+
+---
+
+## 3. Host-Safety Rule (NEW — 2026-11-22)
+
+### RULE-001: No sudo or kernel/network changes without explicit owner approval
+- **Rule:** Never run `sudo`, `modprobe`, `tc`, or any other command that modifies host kernel state or network configuration without first:
+  1. Showing the **exact command(s)** to the owner in a Status Report.
+  2. Receiving explicit written approval.
+- **Cleanup requirement:** Every host-level change must have a corresponding cleanup script (e.g., `scripts/netem_clear.sh`) that fully reverts the change, and an entry in this file describing what was changed and what the cleanup does.
+- **Cleanup script:** `scripts/netem_clear.sh` (reverting netem qdisc on Kind worker containers — to be populated in T1.2 after approval).
+
