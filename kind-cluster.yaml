@@ -1,0 +1,17 @@
+# Kind cluster config for k8s-RL-scheduler experiments
+# 1 control-plane + 3 worker nodes
+# Pinned node image: kindest/node:v1.37.0 (sha256 pinned for reproducibility)
+# ACTUAL cluster was created in a previous session using this image (confirmed via
+#   docker inspect rl-scheduler-control-plane --format '{{.Config.Image}}')
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: rl-scheduler
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+  - role: worker
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+  - role: worker
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+  - role: worker
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
